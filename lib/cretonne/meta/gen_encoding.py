@@ -2,7 +2,7 @@
 Generate sources for instruction encoding.
 
 The tables and functions generated here support the `TargetISA::encode()`
-function which determines if a given instruction is legal, and if so, it's
+function which determines if a given instruction is legal, and if so, its
 `Encoding` data which consists of a *recipe* and some *encoding* bits.
 
 The `encode` function doesn't actually generate the binary machine bits. Each
@@ -44,7 +44,7 @@ one of these forms:
    satisfied. Otherwise, stop with the default legalization code.
 3. Stop with legalization code.
 4. Predicate + skip count. Test predicate and skip N entries if it is false.
-4. Predicate + stop. Test predicate and stop with the default legalization code
+5. Predicate + stop. Test predicate and stop with the default legalization code
    if it is false.
 
 The instruction predicate is also used to distinguish between polymorphic

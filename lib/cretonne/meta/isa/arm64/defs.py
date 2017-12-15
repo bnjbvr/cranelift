@@ -10,6 +10,3 @@ from base.legalize import narrow
 
 ISA = TargetISA('arm64', [base.instructions.GROUP])
 A64 = CPUMode('A64', ISA)
-
-# TODO: Refine these
-A64.legalize_type(narrow)

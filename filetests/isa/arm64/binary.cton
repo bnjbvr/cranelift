@@ -1,0 +1,20 @@
+; Binary emission.
+test binemit
+isa arm64
+
+; The binary encodings can be verified with the command:
+;
+;   sed -ne 's/^ *; asm: *//p' filetests/isa/arm64/binary.cton | llvm-mc -show-encoding -triple=arm64
+;
+
+function %RV32I(i32 link [%x1]) -> i32 link [%x1] {
+    fn0 = function %foo()
+    sig0 = ()
+
+ebb0(v9999: i32):
+    ; asm: mov w2, #1
+    [-,%x2]            v1 = iconst.i32 1 ; bin: 52800022
+    ; asm: mov x3, #2
+    [-,%x3]            v2 = iconst.i64 2 ; bin: d2800043
+    return v1
+}
