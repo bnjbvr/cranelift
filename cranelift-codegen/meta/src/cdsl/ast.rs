@@ -1,5 +1,5 @@
 use crate::cdsl::formats::FormatRegistry;
-use crate::cdsl::inst::{BoundInstruction, Instruction, InstructionPredicate};
+use crate::cdsl::instructions::{BoundInstruction, Instruction, InstructionPredicate};
 use crate::cdsl::operands::{OperandKind, OperandKindFields};
 use crate::cdsl::types::{LaneType, ValueType};
 use crate::cdsl::typevar::{TypeSetBuilder, TypeVar};
