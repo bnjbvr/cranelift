@@ -1,7 +1,7 @@
 use crate::cdsl::ast::{
     Apply, DefIndex, DefPool, DummyDef, DummyExpr, Expr, PatternPosition, VarIndex, VarPool,
 };
-use crate::cdsl::inst::Instruction;
+use crate::cdsl::instructions::Instruction;
 use crate::cdsl::type_inference::{infer_transform, TypeEnvironment};
 use crate::cdsl::typevar::TypeVar;
 

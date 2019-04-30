@@ -1,5 +1,5 @@
 use crate::cdsl::ast::{bind, var, ExprBuilder, Literal};
-use crate::cdsl::inst::InstructionGroup;
+use crate::cdsl::instructions::InstructionGroup;
 use crate::cdsl::xform::TransformGroupBuilder;
 
 use crate::shared::types::Int::{I32, I64};
