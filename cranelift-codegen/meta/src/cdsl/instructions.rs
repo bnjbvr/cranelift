@@ -8,6 +8,7 @@ use crate::cdsl::types::ValueType;
 use crate::cdsl::typevar::TypeVar;
 
 use std::fmt;
+use std::mem;
 use std::ops;
 use std::rc::Rc;
 use std::slice;
@@ -34,7 +35,8 @@ impl<'format_reg> InstructionGroupBuilder<'format_reg> {
     }
 
     pub fn push(&mut self, builder: InstructionBuilder) {
-        self.instructions.push(builder.finish(self.format_registry));
+        self.instructions
+            .extend(builder.finish(self.format_registry));
     }
 
     pub fn finish(self) -> InstructionGroup {
@@ -72,6 +74,11 @@ pub struct PolymorphicInfo {
     pub use_typevar_operand: bool,
     pub ctrl_typevar: TypeVar,
     pub other_typevars: Vec<TypeVar>,
+}
+
+pub struct ImmediateVariant {
+    /// Index of the immediate operand.
+    pub imm_operand: usize,
 }
 
 pub struct InstructionContent {
@@ -122,6 +129,8 @@ pub struct InstructionContent {
     pub other_side_effects: bool,
     /// Does this instruction write to CPU flags?
     pub writes_cpu_flags: bool,
+
+    imm_variant: Option<ImmediateVariant>,
 }
 
 #[derive(Clone)]
@@ -197,6 +206,12 @@ impl fmt::Display for Instruction {
     }
 }
 
+struct ImmVariantBuildInfo {
+    operands_in: Vec<Operand>,
+    operands_out: Option<Vec<Operand>>,
+    imm_operand: usize,
+}
+
 pub struct InstructionBuilder {
     name: String,
     doc: String,
@@ -215,6 +230,8 @@ pub struct InstructionBuilder {
     can_store: bool,
     can_trap: bool,
     other_side_effects: bool,
+
+    imm_variant: Option<ImmVariantBuildInfo>,
 }
 
 impl InstructionBuilder {
@@ -236,6 +253,38 @@ impl InstructionBuilder {
             can_store: false,
             can_trap: false,
             other_side_effects: false,
+
+            imm_variant: None,
+        }
+    }
+
+    // A variant necessarily has at least one input operand, but may have no out operands.
+    fn copy_variant(
+        &self,
+        name: String,
+        doc: String,
+        operands_in: Vec<Operand>,
+        operands_out: Option<Vec<Operand>>,
+    ) -> Self {
+        Self {
+            name,
+            doc,
+            operands_in: Some(operands_in),
+            operands_out,
+            constraints: self.constraints.clone(),
+
+            is_terminator: self.is_terminator,
+            is_branch: self.is_branch,
+            is_indirect_branch: self.is_indirect_branch,
+            is_call: self.is_call,
+            is_return: self.is_return,
+            is_ghost: self.is_ghost,
+            can_load: self.can_load,
+            can_store: self.can_store,
+            can_trap: self.can_trap,
+            other_side_effects: self.other_side_effects,
+
+            imm_variant: None,
         }
     }
 
@@ -296,7 +345,53 @@ impl InstructionBuilder {
         self
     }
 
-    fn finish(self, format_registry: &FormatRegistry) -> Instruction {
+    pub fn set_immediate_variant(
+        mut self,
+        imm_operand: usize,
+        operands_in: Vec<&Operand>,
+        operands_out: Option<Vec<&Operand>>,
+    ) -> Self {
+        assert!(
+            imm_operand < operands_in.len(),
+            "the immediate operand index must be lower than the number of input operands"
+        );
+        assert!(self.imm_variant.is_none());
+        let operands_in = operands_in.iter().map(|&x| x.clone()).collect();
+        let operands_out = operands_out.map(|ops| ops.iter().map(|&x| x.clone()).collect());
+        self.imm_variant = Some(ImmVariantBuildInfo {
+            operands_in,
+            operands_out,
+            imm_operand,
+        });
+        self
+    }
+
+    fn finish(mut self, format_registry: &FormatRegistry) -> Vec<Instruction> {
+        let mut insts = Vec::new();
+
+        let imm_variant = mem::replace(&mut self.imm_variant, None);
+        let imm_variant = if let Some(variant) = imm_variant {
+            let imm_inst = self.copy_variant(
+                format!("{}_imm", self.name),
+                format!("Immediate variant for the {} instruction", self.name),
+                variant.operands_in,
+                variant.operands_out,
+            );
+
+            let imm_insts = imm_inst.finish(format_registry);
+            assert!(
+                imm_insts.len() == 1,
+                "an immediate variant shouldn't have variants"
+            );
+            insts.extend(imm_insts);
+
+            Some(ImmediateVariant {
+                imm_operand: variant.imm_operand,
+            })
+        } else {
+            None
+        };
+
         let operands_in = self.operands_in.unwrap_or_else(Vec::new);
         let operands_out = self.operands_out.unwrap_or_else(Vec::new);
 
@@ -329,7 +424,7 @@ impl InstructionBuilder {
         let writes_cpu_flags = operands_out.iter().any(|op| op.is_cpu_flags());
 
         let camel_name = camel_case(&self.name);
-        Instruction {
+        insts.push(Instruction {
             content: Rc::new(InstructionContent {
                 name: self.name,
                 camel_name,
@@ -353,8 +448,11 @@ impl InstructionBuilder {
                 can_trap: self.can_trap,
                 other_side_effects: self.other_side_effects,
                 writes_cpu_flags,
+                imm_variant,
             }),
-        }
+        });
+
+        insts
     }
 }
 

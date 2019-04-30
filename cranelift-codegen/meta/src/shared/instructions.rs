@@ -1193,6 +1193,7 @@ pub fn define(
     );
 
     let delta = &operand("delta", Int);
+    let Offset = &operand_doc("Offset", imm64, "Offset from current stack pointer");
 
     ig.push(
         Inst::new(
@@ -1204,7 +1205,8 @@ pub fn define(
     "#,
         )
         .operands_in(vec![delta])
-        .other_side_effects(true),
+        .other_side_effects(true)
+        .set_immediate_variant(0, vec![Offset], None),
     );
 
     let Offset = &operand_doc("Offset", imm64, "Offset from current stack pointer");
@@ -1214,24 +1216,6 @@ pub fn define(
             "adjust_sp_up_imm",
             r#"
     Adds ``Offset`` immediate offset value to the stack pointer register.
-
-    This instruction is used to adjust the stack pointer, primarily in function
-    prologues and epilogues. ``Offset`` is constrained to the size of a signed
-    32-bit integer.
-    "#,
-        )
-        .operands_in(vec![Offset])
-        .other_side_effects(true),
-    );
-
-    let Offset = &operand_doc("Offset", imm64, "Offset from current stack pointer");
-
-    ig.push(
-        Inst::new(
-            "adjust_sp_down_imm",
-            r#"
-    Subtracts ``Offset`` immediate offset value from the stack pointer
-    register.
 
     This instruction is used to adjust the stack pointer, primarily in function
     prologues and epilogues. ``Offset`` is constrained to the size of a signed
@@ -1423,6 +1407,10 @@ pub fn define(
     let x = &operand("x", Int);
     let y = &operand("y", Int);
 
+    let a_imm = &operand("a", b1);
+    let x_imm = &operand("x", iB);
+    let Y_imm = &operand("Y", imm64);
+
     ig.push(
         Inst::new(
             "icmp",
@@ -1448,28 +1436,8 @@ pub fn define(
         "#,
         )
         .operands_in(vec![Cond, x, y])
-        .operands_out(vec![a]),
-    );
-
-    let a = &operand("a", b1);
-    let x = &operand("x", iB);
-    let Y = &operand("Y", imm64);
-
-    ig.push(
-        Inst::new(
-            "icmp_imm",
-            r#"
-        Compare scalar integer to a constant.
-
-        This is the same as the :inst:`icmp` instruction, except one operand is
-        an immediate constant.
-
-        This instruction can only compare scalars. Use :inst:`icmp` for
-        lane-wise vector comparisons.
-        "#,
-        )
-        .operands_in(vec![Cond, x, Y])
-        .operands_out(vec![a]),
+        .operands_out(vec![a])
+        .set_immediate_variant(2, vec![Cond, x_imm, Y_imm], Some(vec![a_imm])),
     );
 
     let f = &operand("f", iflags);
@@ -1487,21 +1455,8 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![f]),
-    );
-
-    ig.push(
-        Inst::new(
-            "ifcmp_imm",
-            r#"
-        Compare scalar integer to a constant and return flags.
-
-        Like :inst:`icmp_imm`, but returns integer CPU flags instead of testing
-        a specific condition code.
-        "#,
-        )
-        .operands_in(vec![x, Y])
-        .operands_out(vec![f]),
+        .operands_out(vec![f])
+        .set_immediate_variant(1, vec![x_imm, Y_imm], Some(vec![f])),
     );
 
     let a = &operand("a", Int);
