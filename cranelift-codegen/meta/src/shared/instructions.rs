@@ -1,7 +1,9 @@
 #![allow(non_snake_case)]
 
 use crate::cdsl::formats::FormatRegistry;
-use crate::cdsl::instructions::{InstructionBuilder as Inst, InstructionGroup};
+use crate::cdsl::instructions::{
+    InstructionBuilder as Inst, InstructionGroup, InstructionGroupBuilder,
+};
 use crate::cdsl::operands::{create_operand as operand, create_operand_doc as operand_doc};
 use crate::cdsl::type_inference::Constraint::WiderOrEq;
 use crate::cdsl::types::{LaneType, ValueType};
@@ -13,7 +15,8 @@ pub fn define(
     immediates: &OperandKinds,
     entities: &OperandKinds,
 ) -> InstructionGroup {
-    let mut ig = InstructionGroup::new("base", "Shared base instruction set");
+    let mut ig =
+        InstructionGroupBuilder::new("base", "Shared base instruction set", format_registry);
 
     // Operand kind shorthands.
     let intcc = immediates.by_name("intcc");
@@ -151,8 +154,7 @@ pub fn define(
         )
         .operands_in(vec![EBB, args])
         .is_terminator(true)
-        .is_branch(true)
-        .finish(format_registry),
+        .is_branch(true),
     );
 
     ig.push(
@@ -171,8 +173,7 @@ pub fn define(
         )
         .operands_in(vec![EBB, args])
         .is_terminator(true)
-        .is_branch(true)
-        .finish(format_registry),
+        .is_branch(true),
     );
 
     ig.push(
@@ -186,8 +187,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![c, EBB, args])
-        .is_branch(true)
-        .finish(format_registry),
+        .is_branch(true),
     );
 
     ig.push(
@@ -201,8 +201,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![c, EBB, args])
-        .is_branch(true)
-        .finish(format_registry),
+        .is_branch(true),
     );
 
     ig.push(
@@ -227,8 +226,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![Cond, x, y, EBB, args])
-        .is_branch(true)
-        .finish(format_registry),
+        .is_branch(true),
     );
 
     let f = &operand("f", iflags);
@@ -241,8 +239,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![Cond, f, EBB, args])
-        .is_branch(true)
-        .finish(format_registry),
+        .is_branch(true),
     );
 
     let Cond = &operand("Cond", floatcc);
@@ -256,8 +253,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![Cond, f, EBB, args])
-        .is_branch(true)
-        .finish(format_registry),
+        .is_branch(true),
     );
 
     let x = &operand_doc("x", iB, "index into jump table");
@@ -293,8 +289,7 @@ pub fn define(
         )
         .operands_in(vec![x, EBB, JT])
         .is_terminator(true)
-        .is_branch(true)
-        .finish(format_registry),
+        .is_branch(true),
     );
 
     let Size = &operand_doc("Size", uimm8, "Size in bytes");
@@ -314,8 +309,7 @@ pub fn define(
     "#,
         )
         .operands_in(vec![x, addr, Size, JT])
-        .operands_out(vec![entry])
-        .finish(format_registry),
+        .operands_out(vec![entry]),
     );
 
     ig.push(
@@ -331,8 +325,7 @@ pub fn define(
     "#,
         )
         .operands_in(vec![JT])
-        .operands_out(vec![addr])
-        .finish(format_registry),
+        .operands_out(vec![addr]),
     );
 
     ig.push(
@@ -348,8 +341,7 @@ pub fn define(
         .operands_in(vec![addr, JT])
         .is_indirect_branch(true)
         .is_terminator(true)
-        .is_branch(true)
-        .finish(format_registry),
+        .is_branch(true),
     );
 
     ig.push(
@@ -361,8 +353,7 @@ pub fn define(
         )
         .other_side_effects(true)
         .can_load(true)
-        .can_store(true)
-        .finish(format_registry),
+        .can_store(true),
     );
 
     let code = &operand("code", trapcode);
@@ -376,8 +367,7 @@ pub fn define(
         )
         .operands_in(vec![code])
         .can_trap(true)
-        .is_terminator(true)
-        .finish(format_registry),
+        .is_terminator(true),
     );
 
     ig.push(
@@ -390,8 +380,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![c, code])
-        .can_trap(true)
-        .finish(format_registry),
+        .can_trap(true),
     );
 
     ig.push(
@@ -404,8 +393,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![c, code])
-        .can_trap(true)
-        .finish(format_registry),
+        .can_trap(true),
     );
 
     let Cond = &operand("Cond", intcc);
@@ -419,8 +407,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![Cond, f, code])
-        .can_trap(true)
-        .finish(format_registry),
+        .can_trap(true),
     );
 
     let Cond = &operand("Cond", floatcc);
@@ -434,8 +421,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![Cond, f, code])
-        .can_trap(true)
-        .finish(format_registry),
+        .can_trap(true),
     );
 
     let rvals = &operand_doc("rvals", variable_args, "return values");
@@ -453,8 +439,7 @@ pub fn define(
         )
         .operands_in(vec![rvals])
         .is_return(true)
-        .is_terminator(true)
-        .finish(format_registry),
+        .is_terminator(true),
     );
 
     ig.push(
@@ -470,8 +455,7 @@ pub fn define(
         )
         .operands_in(vec![rvals])
         .is_return(true)
-        .is_terminator(true)
-        .finish(format_registry),
+        .is_terminator(true),
     );
 
     let FN = &operand_doc(
@@ -493,8 +477,7 @@ pub fn define(
         )
         .operands_in(vec![FN, args])
         .operands_out(vec![rvals])
-        .is_call(true)
-        .finish(format_registry),
+        .is_call(true),
     );
 
     let SIG = &operand_doc("SIG", sig_ref, "function signature");
@@ -517,8 +500,7 @@ pub fn define(
         )
         .operands_in(vec![SIG, callee, args])
         .operands_out(vec![rvals])
-        .is_call(true)
-        .finish(format_registry),
+        .is_call(true),
     );
 
     ig.push(
@@ -535,8 +517,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![FN])
-        .operands_out(vec![addr])
-        .finish(format_registry),
+        .operands_out(vec![addr]),
     );
 
     let SS = &operand("SS", stack_slot);
@@ -559,8 +540,7 @@ pub fn define(
         )
         .operands_in(vec![MemFlags, p, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -575,8 +555,7 @@ pub fn define(
         )
         .operands_in(vec![MemFlags, args, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -590,8 +569,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![MemFlags, x, p, Offset])
-        .can_store(true)
-        .finish(format_registry),
+        .can_store(true),
     );
 
     ig.push(
@@ -605,8 +583,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![MemFlags, x, args, Offset])
-        .can_store(true)
-        .finish(format_registry),
+        .can_store(true),
     );
 
     let iExt8 = &TypeVar::new(
@@ -628,8 +605,7 @@ pub fn define(
         )
         .operands_in(vec![MemFlags, p, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -643,8 +619,7 @@ pub fn define(
         )
         .operands_in(vec![MemFlags, args, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -658,8 +633,7 @@ pub fn define(
         )
         .operands_in(vec![MemFlags, p, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -673,8 +647,7 @@ pub fn define(
         )
         .operands_in(vec![MemFlags, args, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -687,8 +660,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![MemFlags, x, p, Offset])
-        .can_store(true)
-        .finish(format_registry),
+        .can_store(true),
     );
 
     ig.push(
@@ -701,8 +673,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![MemFlags, x, args, Offset])
-        .can_store(true)
-        .finish(format_registry),
+        .can_store(true),
     );
 
     let iExt16 = &TypeVar::new(
@@ -724,8 +695,7 @@ pub fn define(
         )
         .operands_in(vec![MemFlags, p, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -739,8 +709,7 @@ pub fn define(
         )
         .operands_in(vec![MemFlags, args, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -754,8 +723,7 @@ pub fn define(
         )
         .operands_in(vec![MemFlags, p, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -769,8 +737,7 @@ pub fn define(
         )
         .operands_in(vec![MemFlags, args, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -783,8 +750,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![MemFlags, x, p, Offset])
-        .can_store(true)
-        .finish(format_registry),
+        .can_store(true),
     );
 
     ig.push(
@@ -797,8 +763,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![MemFlags, x, args, Offset])
-        .can_store(true)
-        .finish(format_registry),
+        .can_store(true),
     );
 
     let iExt32 = &TypeVar::new(
@@ -820,8 +785,7 @@ pub fn define(
         )
         .operands_in(vec![MemFlags, p, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -835,8 +799,7 @@ pub fn define(
         )
         .operands_in(vec![MemFlags, args, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -850,8 +813,7 @@ pub fn define(
         )
         .operands_in(vec![MemFlags, p, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -865,8 +827,7 @@ pub fn define(
         )
         .operands_in(vec![MemFlags, args, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -879,8 +840,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![MemFlags, x, p, Offset])
-        .can_store(true)
-        .finish(format_registry),
+        .can_store(true),
     );
 
     ig.push(
@@ -893,8 +853,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![MemFlags, x, args, Offset])
-        .can_store(true)
-        .finish(format_registry),
+        .can_store(true),
     );
 
     let x = &operand_doc("x", Mem, "Value to be stored");
@@ -917,8 +876,7 @@ pub fn define(
         )
         .operands_in(vec![SS, Offset])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     ig.push(
@@ -936,8 +894,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, SS, Offset])
-        .can_store(true)
-        .finish(format_registry),
+        .can_store(true),
     );
 
     ig.push(
@@ -952,8 +909,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![SS, Offset])
-        .operands_out(vec![addr])
-        .finish(format_registry),
+        .operands_out(vec![addr]),
     );
 
     let GV = &operand("GV", global_value);
@@ -966,8 +922,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![GV])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -978,8 +933,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![GV])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let HeapOffset = &TypeVar::new(
@@ -1008,8 +962,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![H, p, Size])
-        .operands_out(vec![addr])
-        .finish(format_registry),
+        .operands_out(vec![addr]),
     );
 
     let TableOffset = &TypeVar::new(
@@ -1039,8 +992,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![T, p, Offset])
-        .operands_out(vec![addr])
-        .finish(format_registry),
+        .operands_out(vec![addr]),
     );
 
     let N = &operand("N", imm64);
@@ -1057,8 +1009,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![N])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let N = &operand("N", ieee32);
@@ -1074,8 +1025,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![N])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let N = &operand("N", ieee64);
@@ -1091,8 +1041,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![N])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let N = &operand("N", boolean);
@@ -1109,21 +1058,17 @@ pub fn define(
         "#,
         )
         .operands_in(vec![N])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
-    ig.push(
-        Inst::new(
-            "nop",
-            r#"
+    ig.push(Inst::new(
+        "nop",
+        r#"
         Just a dummy instruction
 
         Note: this doesn't compile to a machine code nop
         "#,
-        )
-        .finish(format_registry),
-    );
+    ));
 
     let c = &operand_doc("c", Testable, "Controlling value to test");
     let x = &operand_doc("x", Any, "Value to use when `c` is true");
@@ -1141,8 +1086,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![c, x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let cc = &operand_doc("cc", intcc, "Controlling condition code");
@@ -1156,8 +1100,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![cc, flags, x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let x = &operand("x", Any);
@@ -1177,8 +1120,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -1193,8 +1135,7 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .can_store(true)
-        .finish(format_registry),
+        .can_store(true),
     );
 
     ig.push(
@@ -1209,8 +1150,7 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .can_load(true)
-        .finish(format_registry),
+        .can_load(true),
     );
 
     let src = &operand("src", regunit);
@@ -1233,8 +1173,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, src, dst])
-        .other_side_effects(true)
-        .finish(format_registry),
+        .other_side_effects(true),
     );
 
     ig.push(
@@ -1250,8 +1189,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![src, dst])
-        .other_side_effects(true)
-        .finish(format_registry),
+        .other_side_effects(true),
     );
 
     let delta = &operand("delta", Int);
@@ -1266,8 +1204,7 @@ pub fn define(
     "#,
         )
         .operands_in(vec![delta])
-        .other_side_effects(true)
-        .finish(format_registry),
+        .other_side_effects(true),
     );
 
     let Offset = &operand_doc("Offset", imm64, "Offset from current stack pointer");
@@ -1284,8 +1221,7 @@ pub fn define(
     "#,
         )
         .operands_in(vec![Offset])
-        .other_side_effects(true)
-        .finish(format_registry),
+        .other_side_effects(true),
     );
 
     let Offset = &operand_doc("Offset", imm64, "Offset from current stack pointer");
@@ -1303,8 +1239,7 @@ pub fn define(
     "#,
         )
         .operands_in(vec![Offset])
-        .other_side_effects(true)
-        .finish(format_registry),
+        .other_side_effects(true),
     );
 
     let f = &operand("f", iflags);
@@ -1320,8 +1255,7 @@ pub fn define(
     "#,
         )
         .operands_in(vec![addr])
-        .operands_out(vec![f])
-        .finish(format_registry),
+        .operands_out(vec![f]),
     );
 
     ig.push(
@@ -1339,8 +1273,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, src, SS])
-        .other_side_effects(true)
-        .finish(format_registry),
+        .other_side_effects(true),
     );
 
     ig.push(
@@ -1358,8 +1291,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, SS, dst])
-        .other_side_effects(true)
-        .finish(format_registry),
+        .other_side_effects(true),
     );
 
     let x = &operand_doc("x", TxN, "Vector to split");
@@ -1379,8 +1311,7 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![lo, hi])
-        .is_ghost(true)
-        .finish(format_registry),
+        .is_ghost(true),
     );
 
     let Any128 = &TypeVar::new(
@@ -1415,8 +1346,7 @@ pub fn define(
         )
         .operands_in(vec![x, y])
         .operands_out(vec![a])
-        .is_ghost(true)
-        .finish(format_registry),
+        .is_ghost(true),
     );
 
     let c = &operand_doc("c", &TxN.as_bool(), "Controlling vector");
@@ -1435,8 +1365,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![c, x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let x = &operand("x", &TxN.lane_of());
@@ -1451,8 +1380,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let x = &operand_doc("x", TxN, "SIMD vector to modify");
@@ -1470,8 +1398,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Idx, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let x = &operand("x", TxN);
@@ -1488,8 +1415,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Idx])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let a = &operand("a", &Int.as_bool());
@@ -1522,8 +1448,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![Cond, x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let a = &operand("a", b1);
@@ -1544,8 +1469,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![Cond, x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let f = &operand("f", iflags);
@@ -1563,8 +1487,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![f])
-        .finish(format_registry),
+        .operands_out(vec![f]),
     );
 
     ig.push(
@@ -1578,8 +1501,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![f])
-        .finish(format_registry),
+        .operands_out(vec![f]),
     );
 
     let a = &operand("a", Int);
@@ -1597,8 +1519,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -1612,8 +1533,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -1630,8 +1550,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -1646,8 +1565,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -1662,8 +1580,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -1677,8 +1594,7 @@ pub fn define(
         )
         .operands_in(vec![x, y])
         .operands_out(vec![a])
-        .can_trap(true)
-        .finish(format_registry),
+        .can_trap(true),
     );
 
     ig.push(
@@ -1695,8 +1611,7 @@ pub fn define(
         )
         .operands_in(vec![x, y])
         .operands_out(vec![a])
-        .can_trap(true)
-        .finish(format_registry),
+        .can_trap(true),
     );
 
     ig.push(
@@ -1710,8 +1625,7 @@ pub fn define(
         )
         .operands_in(vec![x, y])
         .operands_out(vec![a])
-        .can_trap(true)
-        .finish(format_registry),
+        .can_trap(true),
     );
 
     ig.push(
@@ -1725,8 +1639,7 @@ pub fn define(
         )
         .operands_in(vec![x, y])
         .operands_out(vec![a])
-        .can_trap(true)
-        .finish(format_registry),
+        .can_trap(true),
     );
 
     let a = &operand("a", iB);
@@ -1746,8 +1659,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -1761,8 +1673,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -1775,8 +1686,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -1791,8 +1701,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -1805,8 +1714,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -1819,8 +1727,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -1838,8 +1745,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let a = &operand("a", iB);
@@ -1867,8 +1773,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y, c_in])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -1889,8 +1794,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a, c_out])
-        .finish(format_registry),
+        .operands_out(vec![a, c_out]),
     );
 
     ig.push(
@@ -1911,8 +1815,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y, c_in])
-        .operands_out(vec![a, c_out])
-        .finish(format_registry),
+        .operands_out(vec![a, c_out]),
     );
 
     ig.push(
@@ -1932,8 +1835,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y, b_in])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -1954,8 +1856,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a, b_out])
-        .finish(format_registry),
+        .operands_out(vec![a, b_out]),
     );
 
     ig.push(
@@ -1976,8 +1877,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y, b_in])
-        .operands_out(vec![a, b_out])
-        .finish(format_registry),
+        .operands_out(vec![a, b_out]),
     );
 
     let bits = &TypeVar::new(
@@ -2003,8 +1903,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2015,8 +1914,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2027,8 +1925,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2039,8 +1936,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2053,8 +1949,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2067,8 +1962,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2081,8 +1975,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let x = &operand("x", iB);
@@ -2102,8 +1995,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2119,8 +2011,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2136,8 +2027,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let x = &operand_doc("x", Int, "Scalar or vector value to shift");
@@ -2155,8 +2045,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2169,8 +2058,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2181,8 +2069,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2193,8 +2080,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2214,8 +2100,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2236,8 +2121,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2252,8 +2136,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2266,8 +2149,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2280,8 +2162,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2294,8 +2175,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, Y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let x = &operand("x", iB);
@@ -2311,8 +2191,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2327,8 +2206,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2343,8 +2221,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2359,8 +2236,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2373,8 +2249,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let Float = &TypeVar::new(
@@ -2456,8 +2331,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![Cond, x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let f = &operand("f", fflags);
@@ -2473,8 +2347,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![f])
-        .finish(format_registry),
+        .operands_out(vec![f]),
     );
 
     let x = &operand("x", Float);
@@ -2490,8 +2363,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2502,8 +2374,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2514,8 +2385,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2530,8 +2400,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2542,8 +2411,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2557,8 +2425,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y, z])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let a = &operand_doc("a", Float, "``x`` with its sign bit inverted");
@@ -2573,8 +2440,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let a = &operand_doc("a", Float, "``x`` with its sign bit cleared");
@@ -2589,8 +2455,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let a = &operand_doc(
@@ -2610,8 +2475,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let a = &operand_doc("a", Float, "The smaller of ``x`` and ``y``");
@@ -2626,8 +2490,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let a = &operand_doc("a", Float, "The larger of ``x`` and ``y``");
@@ -2642,8 +2505,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x, y])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let a = &operand_doc("a", Float, "``x`` rounded to integral value");
@@ -2656,8 +2518,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2668,8 +2529,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2680,8 +2540,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2693,8 +2552,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let Cond = &operand("Cond", intcc);
@@ -2712,8 +2570,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![Cond, f])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let Cond = &operand("Cond", floatcc);
@@ -2730,8 +2587,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![Cond, f])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let x = &operand("x", Mem);
@@ -2749,8 +2605,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let Bool = &TypeVar::new(
@@ -2787,8 +2642,7 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .constraints(vec![WiderOrEq(Bool.clone(), BoolTo.clone())])
-        .finish(format_registry),
+        .constraints(vec![WiderOrEq(Bool.clone(), BoolTo.clone())]),
     );
 
     let BoolTo = &TypeVar::new(
@@ -2815,8 +2669,7 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .constraints(vec![WiderOrEq(BoolTo.clone(), Bool.clone())])
-        .finish(format_registry),
+        .constraints(vec![WiderOrEq(BoolTo.clone(), Bool.clone())]),
     );
 
     let IntTo = &TypeVar::new(
@@ -2841,8 +2694,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -2856,8 +2708,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let Int = &TypeVar::new(
@@ -2897,8 +2748,7 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .constraints(vec![WiderOrEq(Int.clone(), IntTo.clone())])
-        .finish(format_registry),
+        .constraints(vec![WiderOrEq(Int.clone(), IntTo.clone())]),
     );
 
     let IntTo = &TypeVar::new(
@@ -2929,8 +2779,7 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .constraints(vec![WiderOrEq(IntTo.clone(), Int.clone())])
-        .finish(format_registry),
+        .constraints(vec![WiderOrEq(IntTo.clone(), Int.clone())]),
     );
 
     ig.push(
@@ -2950,8 +2799,7 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .constraints(vec![WiderOrEq(IntTo.clone(), Int.clone())])
-        .finish(format_registry),
+        .constraints(vec![WiderOrEq(IntTo.clone(), Int.clone())]),
     );
 
     let FloatTo = &TypeVar::new(
@@ -2984,8 +2832,7 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .constraints(vec![WiderOrEq(FloatTo.clone(), Float.clone())])
-        .finish(format_registry),
+        .constraints(vec![WiderOrEq(FloatTo.clone(), Float.clone())]),
     );
 
     ig.push(
@@ -3007,8 +2854,7 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .constraints(vec![WiderOrEq(Float.clone(), FloatTo.clone())])
-        .finish(format_registry),
+        .constraints(vec![WiderOrEq(Float.clone(), FloatTo.clone())]),
     );
 
     let x = &operand("x", Float);
@@ -3029,8 +2875,7 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .can_trap(true)
-        .finish(format_registry),
+        .can_trap(true),
     );
 
     ig.push(
@@ -3043,8 +2888,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -3062,8 +2906,7 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .can_trap(true)
-        .finish(format_registry),
+        .can_trap(true),
     );
 
     ig.push(
@@ -3075,8 +2918,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let x = &operand("x", Int);
@@ -3095,8 +2937,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     ig.push(
@@ -3112,8 +2953,7 @@ pub fn define(
         "#,
         )
         .operands_in(vec![x])
-        .operands_out(vec![a])
-        .finish(format_registry),
+        .operands_out(vec![a]),
     );
 
     let WideInt = &TypeVar::new(
@@ -3143,8 +2983,7 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![lo, hi])
-        .is_ghost(true)
-        .finish(format_registry),
+        .is_ghost(true),
     );
 
     let NarrowInt = &TypeVar::new(
@@ -3177,9 +3016,8 @@ pub fn define(
         )
         .operands_in(vec![lo, hi])
         .operands_out(vec![a])
-        .is_ghost(true)
-        .finish(format_registry),
+        .is_ghost(true),
     );
 
-    ig
+    ig.finish()
 }
