@@ -19,38 +19,38 @@ pub fn define(
         InstructionGroupBuilder::new("base", "Shared base instruction set", format_registry);
 
     // Operand kind shorthands.
-    let intcc = immediates.by_name("intcc");
-    let floatcc = immediates.by_name("floatcc");
-    let trapcode = immediates.by_name("trapcode");
-    let uimm8 = immediates.by_name("uimm8");
-    let uimm32 = immediates.by_name("uimm32");
-    let imm64 = immediates.by_name("imm64");
-    let offset32 = immediates.by_name("offset32");
-    let memflags = immediates.by_name("memflags");
-    let ieee32 = immediates.by_name("ieee32");
-    let ieee64 = immediates.by_name("ieee64");
-    let boolean = immediates.by_name("boolean");
-    let regunit = immediates.by_name("regunit");
+    let imm_intcc = immediates.by_name("intcc");
+    let imm_floatcc = immediates.by_name("floatcc");
+    let imm_trapcode = immediates.by_name("trapcode");
+    let imm_uimm8 = immediates.by_name("uimm8");
+    let imm_uimm32 = immediates.by_name("uimm32");
+    let imm_imm64 = immediates.by_name("imm64");
+    let imm_offset32 = immediates.by_name("offset32");
+    let imm_memflags = immediates.by_name("memflags");
+    let imm_ieee32 = immediates.by_name("ieee32");
+    let imm_ieee64 = immediates.by_name("ieee64");
+    let imm_boolean = immediates.by_name("boolean");
+    let imm_regunit = immediates.by_name("regunit");
 
-    let ebb = entities.by_name("ebb");
-    let jump_table = entities.by_name("jump_table");
-    let variable_args = entities.by_name("variable_args");
-    let func_ref = entities.by_name("func_ref");
-    let sig_ref = entities.by_name("sig_ref");
-    let stack_slot = entities.by_name("stack_slot");
-    let global_value = entities.by_name("global_value");
-    let heap = entities.by_name("heap");
-    let table = entities.by_name("table");
-
-    let iflags: &TypeVar = &ValueType::Special(types::Flag::IFlags.into()).into();
-    let fflags: &TypeVar = &ValueType::Special(types::Flag::FFlags.into()).into();
-
-    let b1: &TypeVar = &ValueType::from(LaneType::from(types::Bool::B1)).into();
-    let f32_: &TypeVar = &ValueType::from(LaneType::from(types::Float::F32)).into();
-    let f64_: &TypeVar = &ValueType::from(LaneType::from(types::Float::F64)).into();
+    let imm_ebb = entities.by_name("ebb");
+    let imm_jump_table = entities.by_name("jump_table");
+    let imm_variable_args = entities.by_name("variable_args");
+    let imm_func_ref = entities.by_name("func_ref");
+    let imm_sig_ref = entities.by_name("sig_ref");
+    let imm_stack_slot = entities.by_name("stack_slot");
+    let imm_global_value = entities.by_name("global_value");
+    let imm_heap = entities.by_name("heap");
+    let imm_table = entities.by_name("table");
 
     // Starting definitions.
-    let Int = &TypeVar::new(
+    let tv_iflags: &TypeVar = &ValueType::Special(types::Flag::IFlags.into()).into();
+    let tv_fflags: &TypeVar = &ValueType::Special(types::Flag::FFlags.into()).into();
+
+    let tv_b1: &TypeVar = &ValueType::from(LaneType::from(types::Bool::B1)).into();
+    let tv_f32: &TypeVar = &ValueType::from(LaneType::from(types::Float::F32)).into();
+    let tv_f64: &TypeVar = &ValueType::from(LaneType::from(types::Float::F64)).into();
+
+    let tv_ints = &TypeVar::new(
         "Int",
         "A scalar or vector integer type",
         TypeSetBuilder::new()
@@ -59,7 +59,7 @@ pub fn define(
             .finish(),
     );
 
-    let Bool = &TypeVar::new(
+    let tv_bools = &TypeVar::new(
         "Bool",
         "A scalar or vector boolean type",
         TypeSetBuilder::new()
@@ -68,19 +68,19 @@ pub fn define(
             .finish(),
     );
 
-    let iB = &TypeVar::new(
+    let tv_scalar_ints = &TypeVar::new(
         "iB",
         "A scalar integer type",
         TypeSetBuilder::new().ints(Interval::All).finish(),
     );
 
-    let iAddr = &TypeVar::new(
+    let tv_int_addr = &TypeVar::new(
         "iAddr",
         "An integer address type",
         TypeSetBuilder::new().ints(32..64).finish(),
     );
 
-    let Testable = &TypeVar::new(
+    let tv_testable = &TypeVar::new(
         "Testable",
         "A scalar boolean or integer type",
         TypeSetBuilder::new()
@@ -89,7 +89,7 @@ pub fn define(
             .finish(),
     );
 
-    let TxN = &TypeVar::new(
+    let tv_vector = &TypeVar::new(
         "TxN",
         "A SIMD vector type",
         TypeSetBuilder::new()
@@ -101,7 +101,7 @@ pub fn define(
             .finish(),
     );
 
-    let Any = &TypeVar::new(
+    let tv_any = &TypeVar::new(
         "Any",
         "Any integer, float, or boolean scalar or vector type",
         TypeSetBuilder::new()
@@ -113,7 +113,7 @@ pub fn define(
             .finish(),
     );
 
-    let Mem = &TypeVar::new(
+    let tv_memory_writeable = &TypeVar::new(
         "Mem",
         "Any type that can be stored in memory",
         TypeSetBuilder::new()
@@ -123,23 +123,13 @@ pub fn define(
             .finish(),
     );
 
-    let MemTo = &TypeVar::new(
-        "MemTo",
-        "Any type that can be stored in memory",
-        TypeSetBuilder::new()
-            .ints(Interval::All)
-            .floats(Interval::All)
-            .simd_lanes(Interval::All)
-            .finish(),
-    );
-
-    let addr = &operand("addr", iAddr);
-    let c = &operand_doc("c", Testable, "Controlling value to test");
-    let Cond = &operand("Cond", intcc);
-    let x = &operand("x", iB);
-    let y = &operand("y", iB);
-    let EBB = &operand_doc("EBB", ebb, "Destination extended basic block");
-    let args = &operand_doc("args", variable_args, "EBB arguments");
+    let op_addr = &operand("addr", tv_int_addr);
+    let op_controlling_value = &operand_doc("c", tv_testable, "Controlling value to test");
+    let op_intcc = &operand("Cond", imm_intcc);
+    let x = &operand("x", tv_scalar_ints);
+    let y = &operand("y", tv_scalar_ints);
+    let EBB = &operand_doc("EBB", imm_ebb, "Destination extended basic block");
+    let args = &operand_doc("args", imm_variable_args, "EBB arguments");
 
     ig.push(
         Inst::new(
@@ -186,7 +176,7 @@ pub fn define(
         ``c`` is an integer value, take the branch when ``c = 0``.
         "#,
         )
-        .operands_in(vec![c, EBB, args])
+        .operands_in(vec![op_controlling_value, EBB, args])
         .is_branch(true),
     );
 
@@ -200,7 +190,7 @@ pub fn define(
         ``c`` is an integer value, take the branch when ``c != 0``.
         "#,
         )
-        .operands_in(vec![c, EBB, args])
+        .operands_in(vec![op_controlling_value, EBB, args])
         .is_branch(true),
     );
 
@@ -225,11 +215,11 @@ pub fn define(
         be used to represent *macro-op fusion* on architectures like Intel's.
         "#,
         )
-        .operands_in(vec![Cond, x, y, EBB, args])
+        .operands_in(vec![op_intcc, x, y, EBB, args])
         .is_branch(true),
     );
 
-    let f = &operand("f", iflags);
+    let f = &operand("f", tv_iflags);
 
     ig.push(
         Inst::new(
@@ -238,12 +228,12 @@ pub fn define(
         Branch when condition is true in integer CPU flags.
         "#,
         )
-        .operands_in(vec![Cond, f, EBB, args])
+        .operands_in(vec![op_intcc, f, EBB, args])
         .is_branch(true),
     );
 
-    let Cond = &operand("Cond", floatcc);
-    let f = &operand("f", fflags);
+    let Cond = &operand("Cond", imm_floatcc);
+    let f = &operand("f", tv_fflags);
 
     ig.push(
         Inst::new(
@@ -256,16 +246,16 @@ pub fn define(
         .is_branch(true),
     );
 
-    let x = &operand_doc("x", iB, "index into jump table");
+    let x = &operand_doc("x", tv_scalar_ints, "index into jump table");
 
-    let Entry = &TypeVar::new(
+    let tv_entry = &TypeVar::new(
         "Entry",
         "A scalar integer type",
         TypeSetBuilder::new().ints(Interval::All).finish(),
     );
 
-    let entry = &operand_doc("entry", Entry, "entry of jump table");
-    let JT = &operand("JT", jump_table);
+    let entry = &operand_doc("entry", tv_entry, "entry of jump table");
+    let JT = &operand("JT", imm_jump_table);
 
     ig.push(
         Inst::new(
@@ -292,7 +282,7 @@ pub fn define(
         .is_branch(true),
     );
 
-    let Size = &operand_doc("Size", uimm8, "Size in bytes");
+    let Size = &operand_doc("Size", imm_uimm8, "Size in bytes");
 
     ig.push(
         Inst::new(
@@ -308,7 +298,7 @@ pub fn define(
     base of the jump table.
     "#,
         )
-        .operands_in(vec![x, addr, Size, JT])
+        .operands_in(vec![x, op_addr, Size, JT])
         .operands_out(vec![entry]),
     );
 
@@ -325,7 +315,7 @@ pub fn define(
     "#,
         )
         .operands_in(vec![JT])
-        .operands_out(vec![addr]),
+        .operands_out(vec![op_addr]),
     );
 
     ig.push(
@@ -338,7 +328,7 @@ pub fn define(
     with the ``jump_table_entry`` instruction.
     "#,
         )
-        .operands_in(vec![addr, JT])
+        .operands_in(vec![op_addr, JT])
         .is_indirect_branch(true)
         .is_terminator(true)
         .is_branch(true),
@@ -356,7 +346,7 @@ pub fn define(
         .can_store(true),
     );
 
-    let code = &operand("code", trapcode);
+    let code = &operand("code", imm_trapcode);
 
     ig.push(
         Inst::new(
@@ -379,7 +369,7 @@ pub fn define(
         if ``c`` is non-zero, execution continues at the following instruction.
         "#,
         )
-        .operands_in(vec![c, code])
+        .operands_in(vec![op_controlling_value, code])
         .can_trap(true),
     );
 
@@ -392,12 +382,12 @@ pub fn define(
         if ``c`` is zero, execution continues at the following instruction.
         "#,
         )
-        .operands_in(vec![c, code])
+        .operands_in(vec![op_controlling_value, code])
         .can_trap(true),
     );
 
-    let Cond = &operand("Cond", intcc);
-    let f = &operand("f", iflags);
+    let Cond = &operand("Cond", imm_intcc);
+    let f = &operand("f", tv_iflags);
 
     ig.push(
         Inst::new(
@@ -410,8 +400,8 @@ pub fn define(
         .can_trap(true),
     );
 
-    let Cond = &operand("Cond", floatcc);
-    let f = &operand("f", fflags);
+    let Cond = &operand("Cond", imm_floatcc);
+    let f = &operand("f", tv_fflags);
 
     ig.push(
         Inst::new(
@@ -424,7 +414,7 @@ pub fn define(
         .can_trap(true),
     );
 
-    let rvals = &operand_doc("rvals", variable_args, "return values");
+    let rvals = &operand_doc("rvals", imm_variable_args, "return values");
 
     ig.push(
         Inst::new(
@@ -460,10 +450,10 @@ pub fn define(
 
     let FN = &operand_doc(
         "FN",
-        func_ref,
+        imm_func_ref,
         "function to call, declared by :inst:`function`",
     );
-    let args = &operand_doc("args", variable_args, "call arguments");
+    let args = &operand_doc("args", imm_variable_args, "call arguments");
 
     ig.push(
         Inst::new(
@@ -480,8 +470,8 @@ pub fn define(
         .is_call(true),
     );
 
-    let SIG = &operand_doc("SIG", sig_ref, "function signature");
-    let callee = &operand_doc("callee", iAddr, "address of function to call");
+    let SIG = &operand_doc("SIG", imm_sig_ref, "function signature");
+    let callee = &operand_doc("callee", tv_int_addr, "address of function to call");
 
     ig.push(
         Inst::new(
@@ -517,16 +507,16 @@ pub fn define(
         "#,
         )
         .operands_in(vec![FN])
-        .operands_out(vec![addr]),
+        .operands_out(vec![op_addr]),
     );
 
-    let SS = &operand("SS", stack_slot);
-    let Offset = &operand_doc("Offset", offset32, "Byte offset from base address");
-    let x = &operand_doc("x", Mem, "Value to be stored");
-    let a = &operand_doc("a", Mem, "Value loaded");
-    let p = &operand("p", iAddr);
-    let MemFlags = &operand("MemFlags", memflags);
-    let args = &operand_doc("args", variable_args, "Address arguments");
+    let SS = &operand("SS", imm_stack_slot);
+    let Offset = &operand_doc("Offset", imm_offset32, "Byte offset from base address");
+    let x = &operand_doc("x", tv_memory_writeable, "Value to be stored");
+    let a = &operand_doc("a", tv_memory_writeable, "Value loaded");
+    let p = &operand("p", tv_int_addr);
+    let MemFlags = &operand("MemFlags", imm_memflags);
+    let args = &operand_doc("args", imm_variable_args, "Address arguments");
 
     ig.push(
         Inst::new(
@@ -586,13 +576,13 @@ pub fn define(
         .can_store(true),
     );
 
-    let iExt8 = &TypeVar::new(
+    let tv_intext8 = &TypeVar::new(
         "iExt8",
         "An integer type with more than 8 bits",
         TypeSetBuilder::new().ints(16..64).finish(),
     );
-    let x = &operand("x", iExt8);
-    let a = &operand("a", iExt8);
+    let x = &operand("x", tv_intext8);
+    let a = &operand("a", tv_intext8);
 
     ig.push(
         Inst::new(
@@ -676,13 +666,13 @@ pub fn define(
         .can_store(true),
     );
 
-    let iExt16 = &TypeVar::new(
+    let tv_intext16 = &TypeVar::new(
         "iExt16",
         "An integer type with more than 16 bits",
         TypeSetBuilder::new().ints(32..64).finish(),
     );
-    let x = &operand("x", iExt16);
-    let a = &operand("a", iExt16);
+    let x = &operand("x", tv_intext16);
+    let a = &operand("a", tv_intext16);
 
     ig.push(
         Inst::new(
@@ -766,13 +756,13 @@ pub fn define(
         .can_store(true),
     );
 
-    let iExt32 = &TypeVar::new(
+    let tv_intext32 = &TypeVar::new(
         "iExt32",
         "An integer type with more than 32 bits",
         TypeSetBuilder::new().ints(64..64).finish(),
     );
-    let x = &operand("x", iExt32);
-    let a = &operand("a", iExt32);
+    let x = &operand("x", tv_intext32);
+    let a = &operand("a", tv_intext32);
 
     ig.push(
         Inst::new(
@@ -856,9 +846,9 @@ pub fn define(
         .can_store(true),
     );
 
-    let x = &operand_doc("x", Mem, "Value to be stored");
-    let a = &operand_doc("a", Mem, "Value loaded");
-    let Offset = &operand_doc("Offset", offset32, "In-bounds offset into stack slot");
+    let x = &operand_doc("x", tv_memory_writeable, "Value to be stored");
+    let a = &operand_doc("a", tv_memory_writeable, "Value loaded");
+    let Offset = &operand_doc("Offset", imm_offset32, "In-bounds offset into stack slot");
 
     ig.push(
         Inst::new(
@@ -909,10 +899,10 @@ pub fn define(
         "#,
         )
         .operands_in(vec![SS, Offset])
-        .operands_out(vec![addr]),
+        .operands_out(vec![op_addr]),
     );
 
-    let GV = &operand("GV", global_value);
+    let GV = &operand("GV", imm_global_value);
 
     ig.push(
         Inst::new(
@@ -936,15 +926,15 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let HeapOffset = &TypeVar::new(
+    let tv_heap_offset = &TypeVar::new(
         "HeapOffset",
         "An unsigned heap offset",
         TypeSetBuilder::new().ints(32..64).finish(),
     );
 
-    let H = &operand("H", heap);
-    let p = &operand("p", HeapOffset);
-    let Size = &operand_doc("Size", uimm32, "Size in bytes");
+    let H = &operand("H", imm_heap);
+    let p = &operand("p", tv_heap_offset);
+    let Size = &operand_doc("Size", imm_uimm32, "Size in bytes");
 
     ig.push(
         Inst::new(
@@ -962,17 +952,17 @@ pub fn define(
         "#,
         )
         .operands_in(vec![H, p, Size])
-        .operands_out(vec![addr]),
+        .operands_out(vec![op_addr]),
     );
 
-    let TableOffset = &TypeVar::new(
+    let tv_table_offset = &TypeVar::new(
         "TableOffset",
         "An unsigned table offset",
         TypeSetBuilder::new().ints(32..64).finish(),
     );
-    let T = &operand("T", table);
-    let p = &operand("p", TableOffset);
-    let Offset = &operand_doc("Offset", offset32, "Byte offset from element address");
+    let T = &operand("T", imm_table);
+    let p = &operand("p", tv_table_offset);
+    let Offset = &operand_doc("Offset", imm_offset32, "Byte offset from element address");
 
     ig.push(
         Inst::new(
@@ -992,11 +982,11 @@ pub fn define(
         "#,
         )
         .operands_in(vec![T, p, Offset])
-        .operands_out(vec![addr]),
+        .operands_out(vec![op_addr]),
     );
 
-    let N = &operand("N", imm64);
-    let a = &operand_doc("a", Int, "A constant integer scalar or vector value");
+    let N = &operand("N", imm_imm64);
+    let a = &operand_doc("a", tv_ints, "A constant integer scalar or vector value");
 
     ig.push(
         Inst::new(
@@ -1012,8 +1002,8 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let N = &operand("N", ieee32);
-    let a = &operand_doc("a", f32_, "A constant f32 scalar value");
+    let N = &operand("N", imm_ieee32);
+    let a = &operand_doc("a", tv_f32, "A constant f32 scalar value");
 
     ig.push(
         Inst::new(
@@ -1028,8 +1018,8 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let N = &operand("N", ieee64);
-    let a = &operand_doc("a", f64_, "A constant f64 scalar value");
+    let N = &operand("N", imm_ieee64);
+    let a = &operand_doc("a", tv_f64, "A constant f64 scalar value");
 
     ig.push(
         Inst::new(
@@ -1044,8 +1034,8 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let N = &operand("N", boolean);
-    let a = &operand_doc("a", Bool, "A constant boolean scalar or vector value");
+    let N = &operand("N", imm_boolean);
+    let a = &operand_doc("a", tv_bools, "A constant boolean scalar or vector value");
 
     ig.push(
         Inst::new(
@@ -1070,10 +1060,10 @@ pub fn define(
         "#,
     ));
 
-    let c = &operand_doc("c", Testable, "Controlling value to test");
-    let x = &operand_doc("x", Any, "Value to use when `c` is true");
-    let y = &operand_doc("y", Any, "Value to use when `c` is false");
-    let a = &operand("a", Any);
+    let c = &operand_doc("c", tv_testable, "Controlling value to test");
+    let x = &operand_doc("x", tv_any, "Value to use when `c` is true");
+    let y = &operand_doc("y", tv_any, "Value to use when `c` is false");
+    let a = &operand("a", tv_any);
 
     ig.push(
         Inst::new(
@@ -1089,8 +1079,8 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let cc = &operand_doc("cc", intcc, "Controlling condition code");
-    let flags = &operand_doc("flags", iflags, "The machine's flag register");
+    let cc = &operand_doc("cc", imm_intcc, "Controlling condition code");
+    let flags = &operand_doc("flags", tv_iflags, "The machine's flag register");
 
     ig.push(
         Inst::new(
@@ -1103,7 +1093,7 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let x = &operand("x", Any);
+    let x = &operand("x", tv_any);
 
     ig.push(
         Inst::new(
@@ -1153,8 +1143,8 @@ pub fn define(
         .can_load(true),
     );
 
-    let src = &operand("src", regunit);
-    let dst = &operand("dst", regunit);
+    let src = &operand("src", imm_regunit);
+    let dst = &operand("dst", imm_regunit);
 
     ig.push(
         Inst::new(
@@ -1192,7 +1182,7 @@ pub fn define(
         .other_side_effects(true),
     );
 
-    let delta = &operand("delta", Int);
+    let delta = &operand("delta", tv_ints);
 
     ig.push(
         Inst::new(
@@ -1207,7 +1197,7 @@ pub fn define(
         .other_side_effects(true),
     );
 
-    let Offset = &operand_doc("Offset", imm64, "Offset from current stack pointer");
+    let Offset = &operand_doc("Offset", imm_imm64, "Offset from current stack pointer");
 
     ig.push(
         Inst::new(
@@ -1224,7 +1214,7 @@ pub fn define(
         .other_side_effects(true),
     );
 
-    let Offset = &operand_doc("Offset", imm64, "Offset from current stack pointer");
+    let Offset = &operand_doc("Offset", imm_imm64, "Offset from current stack pointer");
 
     ig.push(
         Inst::new(
@@ -1242,7 +1232,7 @@ pub fn define(
         .other_side_effects(true),
     );
 
-    let f = &operand("f", iflags);
+    let f = &operand("f", tv_iflags);
 
     ig.push(
         Inst::new(
@@ -1254,7 +1244,7 @@ pub fn define(
     pointer is the RHS.
     "#,
         )
-        .operands_in(vec![addr])
+        .operands_in(vec![op_addr])
         .operands_out(vec![f]),
     );
 
@@ -1294,9 +1284,9 @@ pub fn define(
         .other_side_effects(true),
     );
 
-    let x = &operand_doc("x", TxN, "Vector to split");
-    let lo = &operand_doc("lo", &TxN.half_vector(), "Low-numbered lanes of `x`");
-    let hi = &operand_doc("hi", &TxN.half_vector(), "High-numbered lanes of `x`");
+    let x = &operand_doc("x", tv_vector, "Vector to split");
+    let lo = &operand_doc("lo", &tv_vector.half_vector(), "Low-numbered lanes of `x`");
+    let hi = &operand_doc("hi", &tv_vector.half_vector(), "High-numbered lanes of `x`");
 
     ig.push(
         Inst::new(
@@ -1314,7 +1304,7 @@ pub fn define(
         .is_ghost(true),
     );
 
-    let Any128 = &TypeVar::new(
+    let tv_any_simd_up_to_128 = &TypeVar::new(
         "Any128",
         "Any scalar or vector type with as most 128 lanes",
         TypeSetBuilder::new()
@@ -1326,9 +1316,13 @@ pub fn define(
             .finish(),
     );
 
-    let x = &operand_doc("x", Any128, "Low-numbered lanes");
-    let y = &operand_doc("y", Any128, "High-numbered lanes");
-    let a = &operand_doc("a", &Any128.double_vector(), "Concatenation of `x` and `y`");
+    let x = &operand_doc("x", tv_any_simd_up_to_128, "Low-numbered lanes");
+    let y = &operand_doc("y", tv_any_simd_up_to_128, "High-numbered lanes");
+    let a = &operand_doc(
+        "a",
+        &tv_any_simd_up_to_128.double_vector(),
+        "Concatenation of `x` and `y`",
+    );
 
     ig.push(
         Inst::new(
@@ -1349,10 +1343,10 @@ pub fn define(
         .is_ghost(true),
     );
 
-    let c = &operand_doc("c", &TxN.as_bool(), "Controlling vector");
-    let x = &operand_doc("x", TxN, "Value to use where `c` is true");
-    let y = &operand_doc("y", TxN, "Value to use where `c` is false");
-    let a = &operand("a", TxN);
+    let c = &operand_doc("c", &tv_vector.as_bool(), "Controlling vector");
+    let x = &operand_doc("x", tv_vector, "Value to use where `c` is true");
+    let y = &operand_doc("y", tv_vector, "Value to use where `c` is false");
+    let a = &operand("a", tv_vector);
 
     ig.push(
         Inst::new(
@@ -1368,7 +1362,7 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let x = &operand("x", &TxN.lane_of());
+    let x = &operand("x", &tv_vector.lane_of());
 
     ig.push(
         Inst::new(
@@ -1383,9 +1377,9 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let x = &operand_doc("x", TxN, "SIMD vector to modify");
-    let y = &operand_doc("y", &TxN.lane_of(), "New lane value");
-    let Idx = &operand_doc("Idx", uimm8, "Lane index");
+    let x = &operand_doc("x", tv_vector, "SIMD vector to modify");
+    let y = &operand_doc("y", &tv_vector.lane_of(), "New lane value");
+    let Idx = &operand_doc("Idx", imm_uimm8, "Lane index");
 
     ig.push(
         Inst::new(
@@ -1401,8 +1395,8 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let x = &operand("x", TxN);
-    let a = &operand("a", &TxN.lane_of());
+    let x = &operand("x", tv_vector);
+    let a = &operand("a", &tv_vector.lane_of());
 
     ig.push(
         Inst::new(
@@ -1418,10 +1412,10 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let a = &operand("a", &Int.as_bool());
-    let Cond = &operand("Cond", intcc);
-    let x = &operand("x", Int);
-    let y = &operand("y", Int);
+    let a = &operand("a", &tv_ints.as_bool());
+    let Cond = &operand("Cond", imm_intcc);
+    let x = &operand("x", tv_ints);
+    let y = &operand("y", tv_ints);
 
     ig.push(
         Inst::new(
@@ -1451,9 +1445,9 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let a = &operand("a", b1);
-    let x = &operand("x", iB);
-    let Y = &operand("Y", imm64);
+    let a = &operand("a", tv_b1);
+    let x = &operand("x", tv_scalar_ints);
+    let Y = &operand("Y", imm_imm64);
 
     ig.push(
         Inst::new(
@@ -1472,9 +1466,9 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let f = &operand("f", iflags);
-    let x = &operand("x", iB);
-    let y = &operand("y", iB);
+    let f = &operand("f", tv_iflags);
+    let x = &operand("x", tv_scalar_ints);
+    let y = &operand("y", tv_scalar_ints);
 
     ig.push(
         Inst::new(
@@ -1504,9 +1498,9 @@ pub fn define(
         .operands_out(vec![f]),
     );
 
-    let a = &operand("a", Int);
-    let x = &operand("x", Int);
-    let y = &operand("y", Int);
+    let a = &operand("a", tv_ints);
+    let x = &operand("x", tv_ints);
+    let y = &operand("y", tv_ints);
 
     ig.push(
         Inst::new(
@@ -1642,9 +1636,9 @@ pub fn define(
         .can_trap(true),
     );
 
-    let a = &operand("a", iB);
-    let x = &operand("x", iB);
-    let Y = &operand("Y", imm64);
+    let a = &operand("a", tv_scalar_ints);
+    let x = &operand("x", tv_scalar_ints);
+    let Y = &operand("Y", imm_imm64);
 
     ig.push(
         Inst::new(
@@ -1748,13 +1742,13 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let a = &operand("a", iB);
-    let x = &operand("x", iB);
-    let y = &operand("y", iB);
-    let c_in = &operand_doc("c_in", b1, "Input carry flag");
-    let c_out = &operand_doc("c_out", b1, "Output carry flag");
-    let b_in = &operand_doc("b_in", b1, "Input borrow flag");
-    let b_out = &operand_doc("b_out", b1, "Output borrow flag");
+    let a = &operand("a", tv_scalar_ints);
+    let x = &operand("x", tv_scalar_ints);
+    let y = &operand("y", tv_scalar_ints);
+    let c_in = &operand_doc("c_in", tv_b1, "Input carry flag");
+    let c_out = &operand_doc("c_out", tv_b1, "Output carry flag");
+    let b_in = &operand_doc("b_in", tv_b1, "Input borrow flag");
+    let b_out = &operand_doc("b_out", tv_b1, "Output borrow flag");
 
     ig.push(
         Inst::new(
@@ -1880,20 +1874,9 @@ pub fn define(
         .operands_out(vec![a, b_out]),
     );
 
-    let bits = &TypeVar::new(
-        "bits",
-        "Any integer, float, or boolean scalar or vector type",
-        TypeSetBuilder::new()
-            .ints(Interval::All)
-            .floats(Interval::All)
-            .bools(Interval::All)
-            .simd_lanes(Interval::All)
-            .includes_scalars(true)
-            .finish(),
-    );
-    let x = &operand("x", bits);
-    let y = &operand("y", bits);
-    let a = &operand("a", bits);
+    let x = &operand("x", tv_any);
+    let y = &operand("y", tv_any);
+    let a = &operand("a", tv_any);
 
     ig.push(
         Inst::new(
@@ -1978,9 +1961,9 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let x = &operand("x", iB);
-    let Y = &operand("Y", imm64);
-    let a = &operand("a", iB);
+    let x = &operand("x", tv_scalar_ints);
+    let Y = &operand("Y", imm_imm64);
+    let a = &operand("a", tv_scalar_ints);
 
     ig.push(
         Inst::new(
@@ -2030,10 +2013,10 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let x = &operand_doc("x", Int, "Scalar or vector value to shift");
-    let y = &operand_doc("y", iB, "Number of bits to shift");
-    let Y = &operand("Y", imm64);
-    let a = &operand("a", Int);
+    let x = &operand_doc("x", tv_ints, "Scalar or vector value to shift");
+    let y = &operand_doc("y", tv_scalar_ints, "Number of bits to shift");
+    let Y = &operand("Y", imm_imm64);
+    let a = &operand("a", tv_ints);
 
     ig.push(
         Inst::new(
@@ -2178,8 +2161,8 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let x = &operand("x", iB);
-    let a = &operand("a", iB);
+    let x = &operand("x", tv_scalar_ints);
+    let a = &operand("a", tv_scalar_ints);
 
     ig.push(
         Inst::new(
@@ -2252,7 +2235,7 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let Float = &TypeVar::new(
+    let tv_any_fp = &TypeVar::new(
         "Float",
         "A scalar or vector floating point number",
         TypeSetBuilder::new()
@@ -2260,10 +2243,10 @@ pub fn define(
             .simd_lanes(Interval::All)
             .finish(),
     );
-    let Cond = &operand("Cond", floatcc);
-    let x = &operand("x", Float);
-    let y = &operand("y", Float);
-    let a = &operand("a", &Float.as_bool());
+    let Cond = &operand("Cond", imm_floatcc);
+    let x = &operand("x", tv_any_fp);
+    let y = &operand("y", tv_any_fp);
+    let a = &operand("a", &tv_any_fp.as_bool());
 
     ig.push(
         Inst::new(
@@ -2334,7 +2317,7 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let f = &operand("f", fflags);
+    let f = &operand("f", tv_fflags);
 
     ig.push(
         Inst::new(
@@ -2350,10 +2333,10 @@ pub fn define(
         .operands_out(vec![f]),
     );
 
-    let x = &operand("x", Float);
-    let y = &operand("y", Float);
-    let z = &operand("z", Float);
-    let a = &operand_doc("a", Float, "Result of applying operator to each lane");
+    let x = &operand("x", tv_any_fp);
+    let y = &operand("y", tv_any_fp);
+    let z = &operand("z", tv_any_fp);
+    let a = &operand_doc("a", tv_any_fp, "Result of applying operator to each lane");
 
     ig.push(
         Inst::new(
@@ -2428,7 +2411,7 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let a = &operand_doc("a", Float, "``x`` with its sign bit inverted");
+    let a = &operand_doc("a", tv_any_fp, "``x`` with its sign bit inverted");
 
     ig.push(
         Inst::new(
@@ -2443,7 +2426,7 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let a = &operand_doc("a", Float, "``x`` with its sign bit cleared");
+    let a = &operand_doc("a", tv_any_fp, "``x`` with its sign bit cleared");
 
     ig.push(
         Inst::new(
@@ -2460,7 +2443,7 @@ pub fn define(
 
     let a = &operand_doc(
         "a",
-        Float,
+        tv_any_fp,
         "``x`` with its sign bit changed to that of ``y``",
     );
 
@@ -2478,7 +2461,7 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let a = &operand_doc("a", Float, "The smaller of ``x`` and ``y``");
+    let a = &operand_doc("a", tv_any_fp, "The smaller of ``x`` and ``y``");
 
     ig.push(
         Inst::new(
@@ -2493,7 +2476,7 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let a = &operand_doc("a", Float, "The larger of ``x`` and ``y``");
+    let a = &operand_doc("a", tv_any_fp, "The larger of ``x`` and ``y``");
 
     ig.push(
         Inst::new(
@@ -2508,7 +2491,7 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let a = &operand_doc("a", Float, "``x`` rounded to integral value");
+    let a = &operand_doc("a", tv_any_fp, "``x`` rounded to integral value");
 
     ig.push(
         Inst::new(
@@ -2555,9 +2538,9 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let Cond = &operand("Cond", intcc);
-    let f = &operand("f", iflags);
-    let a = &operand("a", b1);
+    let Cond = &operand("Cond", imm_intcc);
+    let f = &operand("f", tv_iflags);
+    let a = &operand("a", tv_b1);
 
     ig.push(
         Inst::new(
@@ -2573,8 +2556,8 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let Cond = &operand("Cond", floatcc);
-    let f = &operand("f", fflags);
+    let Cond = &operand("Cond", imm_floatcc);
+    let f = &operand("f", tv_fflags);
 
     ig.push(
         Inst::new(
@@ -2590,8 +2573,12 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let x = &operand("x", Mem);
-    let a = &operand_doc("a", MemTo, "Bits of `x` reinterpreted");
+    let x = &operand("x", tv_memory_writeable);
+    let a = &operand_doc(
+        "a",
+        &TypeVar::copy_from(tv_memory_writeable, "MemTo".to_string()),
+        "Bits of `x` reinterpreted",
+    );
 
     ig.push(
         Inst::new(
@@ -2608,26 +2595,9 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let Bool = &TypeVar::new(
-        "Bool",
-        "A scalar or vector boolean type",
-        TypeSetBuilder::new()
-            .bools(Interval::All)
-            .simd_lanes(Interval::All)
-            .finish(),
-    );
-
-    let BoolTo = &TypeVar::new(
-        "BoolTo",
-        "A smaller boolean type with the same number of lanes",
-        TypeSetBuilder::new()
-            .bools(Interval::All)
-            .simd_lanes(Interval::All)
-            .finish(),
-    );
-
-    let x = &operand("x", Bool);
-    let a = &operand("a", BoolTo);
+    let tv_bools_to_narrower = &TypeVar::copy_from(tv_bools, "BoolTo".to_string());
+    let x = &operand("x", tv_bools);
+    let a = &operand("a", tv_bools_to_narrower);
 
     ig.push(
         Inst::new(
@@ -2642,19 +2612,15 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .constraints(vec![WiderOrEq(Bool.clone(), BoolTo.clone())]),
+        .constraints(vec![WiderOrEq(
+            tv_bools.clone(),
+            tv_bools_to_narrower.clone(),
+        )]),
     );
 
-    let BoolTo = &TypeVar::new(
-        "BoolTo",
-        "A larger boolean type with the same number of lanes",
-        TypeSetBuilder::new()
-            .bools(Interval::All)
-            .simd_lanes(Interval::All)
-            .finish(),
-    );
-    let x = &operand("x", Bool);
-    let a = &operand("a", BoolTo);
+    let tv_bools_to_wider = &TypeVar::copy_from(tv_bools, "BoolTo".to_string());
+    let x = &operand("x", tv_bools);
+    let a = &operand("a", tv_bools_to_wider);
 
     ig.push(
         Inst::new(
@@ -2669,19 +2635,11 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .constraints(vec![WiderOrEq(BoolTo.clone(), Bool.clone())]),
+        .constraints(vec![WiderOrEq(tv_bools_to_wider.clone(), tv_bools.clone())]),
     );
 
-    let IntTo = &TypeVar::new(
-        "IntTo",
-        "An integer type with the same number of lanes",
-        TypeSetBuilder::new()
-            .ints(Interval::All)
-            .simd_lanes(Interval::All)
-            .finish(),
-    );
-    let x = &operand("x", Bool);
-    let a = &operand("a", IntTo);
+    let x = &operand("x", tv_bools);
+    let a = &operand("a", tv_ints);
 
     ig.push(
         Inst::new(
@@ -2711,25 +2669,9 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let Int = &TypeVar::new(
-        "Int",
-        "A scalar or vector integer type",
-        TypeSetBuilder::new()
-            .ints(Interval::All)
-            .simd_lanes(Interval::All)
-            .finish(),
-    );
-
-    let IntTo = &TypeVar::new(
-        "IntTo",
-        "A smaller integer type with the same number of lanes",
-        TypeSetBuilder::new()
-            .ints(Interval::All)
-            .simd_lanes(Interval::All)
-            .finish(),
-    );
-    let x = &operand("x", Int);
-    let a = &operand("a", IntTo);
+    let tv_ints_to_narrower = &TypeVar::copy_from(tv_ints, "IntTo".to_string());
+    let x = &operand("x", tv_ints);
+    let a = &operand("a", tv_ints_to_narrower);
 
     ig.push(
         Inst::new(
@@ -2748,19 +2690,15 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .constraints(vec![WiderOrEq(Int.clone(), IntTo.clone())]),
+        .constraints(vec![WiderOrEq(
+            tv_ints.clone(),
+            tv_ints_to_narrower.clone(),
+        )]),
     );
 
-    let IntTo = &TypeVar::new(
-        "IntTo",
-        "A larger integer type with the same number of lanes",
-        TypeSetBuilder::new()
-            .ints(Interval::All)
-            .simd_lanes(Interval::All)
-            .finish(),
-    );
-    let x = &operand("x", Int);
-    let a = &operand("a", IntTo);
+    let tv_ints_to_wider = &TypeVar::copy_from(tv_ints, "IntTo".to_string());
+    let x = &operand("x", tv_ints);
+    let a = &operand("a", tv_ints_to_wider);
 
     ig.push(
         Inst::new(
@@ -2779,7 +2717,7 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .constraints(vec![WiderOrEq(IntTo.clone(), Int.clone())]),
+        .constraints(vec![WiderOrEq(tv_ints_to_wider.clone(), tv_ints.clone())]),
     );
 
     ig.push(
@@ -2799,19 +2737,12 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .constraints(vec![WiderOrEq(IntTo.clone(), Int.clone())]),
+        .constraints(vec![WiderOrEq(tv_ints_to_wider.clone(), tv_ints.clone())]),
     );
 
-    let FloatTo = &TypeVar::new(
-        "FloatTo",
-        "A scalar or vector floating point number",
-        TypeSetBuilder::new()
-            .floats(Interval::All)
-            .simd_lanes(Interval::All)
-            .finish(),
-    );
-    let x = &operand("x", Float);
-    let a = &operand("a", FloatTo);
+    let tv_any_fp_promoted = &TypeVar::copy_from(tv_any_fp, "FloatTo".to_string());
+    let x = &operand("x", tv_any_fp);
+    let a = &operand("a", tv_any_fp_promoted);
 
     ig.push(
         Inst::new(
@@ -2832,7 +2763,10 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .constraints(vec![WiderOrEq(FloatTo.clone(), Float.clone())]),
+        .constraints(vec![WiderOrEq(
+            tv_any_fp_promoted.clone(),
+            tv_any_fp.clone(),
+        )]),
     );
 
     ig.push(
@@ -2854,11 +2788,14 @@ pub fn define(
         )
         .operands_in(vec![x])
         .operands_out(vec![a])
-        .constraints(vec![WiderOrEq(Float.clone(), FloatTo.clone())]),
+        .constraints(vec![WiderOrEq(
+            tv_any_fp.clone(),
+            tv_any_fp_promoted.clone(),
+        )]),
     );
 
-    let x = &operand("x", Float);
-    let a = &operand("a", IntTo);
+    let x = &operand("x", tv_any_fp);
+    let a = &operand("a", tv_ints_to_wider);
 
     ig.push(
         Inst::new(
@@ -2922,7 +2859,7 @@ pub fn define(
     );
 
     let x = &operand("x", Int);
-    let a = &operand("a", FloatTo);
+    let a = &operand("a", tv_any_fp_promoted);
 
     ig.push(
         Inst::new(
@@ -2956,7 +2893,7 @@ pub fn define(
         .operands_out(vec![a]),
     );
 
-    let WideInt = &TypeVar::new(
+    let tv_int16_upwards = &TypeVar::new(
         "WideInt",
         "An integer type with lanes from `i16` upwards",
         TypeSetBuilder::new()
@@ -2964,9 +2901,9 @@ pub fn define(
             .simd_lanes(Interval::All)
             .finish(),
     );
-    let x = &operand("x", WideInt);
-    let lo = &operand_doc("lo", &WideInt.half_width(), "The low bits of `x`");
-    let hi = &operand_doc("hi", &WideInt.half_width(), "The high bits of `x`");
+    let x = &operand("x", tv_int16_upwards);
+    let lo = &operand_doc("lo", &tv_int16_upwards.half_width(), "The low bits of `x`");
+    let hi = &operand_doc("hi", &tv_int16_upwards.half_width(), "The high bits of `x`");
 
     ig.push(
         Inst::new(
