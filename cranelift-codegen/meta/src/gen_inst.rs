@@ -890,6 +890,33 @@ fn gen_format_constructor(format: &InstructionFormat, fmt: &mut Formatter) {
 /// The method will create and insert an instruction, then return the result values, or the
 /// instruction reference itself for instructions that don't have results.
 fn gen_inst_builder(inst: &Instruction, format: &InstructionFormat, fmt: &mut Formatter) {
+    fmt.doc_comment(format!("`{}`\n{}", inst, inst.doc));
+
+    let mut arg_and_ret_comment = Vec::new();
+    let mut first_operand = true;
+    for op in &inst.operands_in {
+        if let Some(doc) = &op.doc {
+            if first_operand {
+                arg_and_ret_comment.push(" \nInputs:".to_string());
+                first_operand = false;
+            }
+            arg_and_ret_comment.push(format!("{}: {}", op.name, doc));
+        }
+    }
+    first_operand = true;
+    for op in &inst.operands_out {
+        if let Some(doc) = &op.doc {
+            if first_operand {
+                arg_and_ret_comment.push(" \nReturn values:".to_string());
+                first_operand = false;
+            }
+            arg_and_ret_comment.push(format!("{}: {}", op.name, doc));
+        }
+    }
+    for line in arg_and_ret_comment {
+        fmt.doc_comment(line);
+    }
+
     // Construct method arguments.
     let mut args = vec![if format.has_value_list {
         "mut self"
@@ -940,7 +967,6 @@ fn gen_inst_builder(inst: &Instruction, format: &InstructionFormat, fmt: &mut Fo
         rtype
     );
 
-    fmt.doc_comment(format!("`{}`\n\n{}", inst, inst.doc_comment_first_line()));
     fmt.line("#[allow(non_snake_case)]");
     fmtln!(fmt, "fn {} {{", proto);
     fmt.indent(|fmt| {
@@ -1057,6 +1083,7 @@ fn gen_builder(instructions: &Vec<&Instruction>, formats: &FormatRegistry, fmt: 
     fmt.indent(|fmt| {
         for inst in instructions {
             gen_inst_builder(inst, formats.get(inst.format), fmt);
+            fmt.empty_line();
         }
         for format in formats.iter() {
             gen_format_constructor(format, fmt);

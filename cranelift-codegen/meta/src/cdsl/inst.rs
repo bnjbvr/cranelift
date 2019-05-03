@@ -58,7 +58,7 @@ pub struct InstructionContent {
     pub camel_name: String,
 
     /// Documentation string.
-    doc: &'static str,
+    pub doc: &'static str,
 
     /// Input operands. This can be a mix of SSA value operands and other operand kinds.
     pub operands_in: Vec<Operand>,
@@ -121,16 +121,6 @@ impl Instruction {
         } else {
             self.name
         }
-    }
-
-    pub fn doc_comment_first_line(&self) -> &'static str {
-        for line in self.doc.split("\n") {
-            let stripped = line.trim();
-            if stripped.len() > 0 {
-                return stripped;
-            }
-        }
-        ""
     }
 
     pub fn all_typevars(&self) -> Vec<&TypeVar> {
