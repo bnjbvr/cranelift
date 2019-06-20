@@ -53,8 +53,7 @@ needed before it would be ready for a production use case.
 
 Cranelift's APIs are not yet stable.
 
-Cranelift currently requires Rust 1.32 or later, and Python 2.7 or 3
-to build.
+Cranelift currently requires Rust 1.34 or later to build.
 
 Planned uses
 ------------
