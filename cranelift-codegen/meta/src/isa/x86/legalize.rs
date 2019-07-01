@@ -19,6 +19,7 @@ pub fn define(shared: &mut SharedDefinitions, x86_instructions: &InstructionGrou
     // List of instructions.
     let insts = &shared.instructions;
     let band = insts.by_name("band");
+    let bitcast = insts.by_name("bitcast");
     let bor = insts.by_name("bor");
     let clz = insts.by_name("clz");
     let ctz = insts.by_name("ctz");
@@ -38,6 +39,7 @@ pub fn define(shared: &mut SharedDefinitions, x86_instructions: &InstructionGrou
     let sdiv = insts.by_name("sdiv");
     let selectif = insts.by_name("selectif");
     let smulhi = insts.by_name("smulhi");
+    let splat = insts.by_name("splat");
     let srem = insts.by_name("srem");
     let udiv = insts.by_name("udiv");
     let umulhi = insts.by_name("umulhi");
@@ -46,6 +48,7 @@ pub fn define(shared: &mut SharedDefinitions, x86_instructions: &InstructionGrou
 
     let x86_bsf = x86_instructions.by_name("x86_bsf");
     let x86_bsr = x86_instructions.by_name("x86_bsr");
+    let x86_pshuf = x86_instructions.by_name("x86_pshuf");
     let x86_umulx = x86_instructions.by_name("x86_umulx");
     let x86_smulx = x86_instructions.by_name("x86_smulx");
 
@@ -81,6 +84,15 @@ pub fn define(shared: &mut SharedDefinitions, x86_instructions: &InstructionGrou
         def!(res_hi = smulhi(x, y)),
         vec![def!((res_lo, res_hi) = x86_smulx(x, y))],
     );
+
+    // SIMD
+//    group.legalize(
+//        def!(y = splat(x)),
+//        vec![
+//            def!(a = bitcast(x)),
+//            def!(y = x86_pshuf(a))
+//        ]
+//    );
 
     // Floating point condition codes.
     //

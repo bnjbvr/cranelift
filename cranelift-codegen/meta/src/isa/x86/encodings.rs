@@ -349,7 +349,6 @@ pub fn define(
     let sload8 = shared.by_name("sload8");
     let sload8_complex = shared.by_name("sload8_complex");
     let spill = shared.by_name("spill");
-    let splat = shared.by_name("splat").clone();
     let sqrt = shared.by_name("sqrt");
     let sshr = shared.by_name("sshr");
     let sshr_imm = shared.by_name("sshr_imm");
@@ -378,6 +377,7 @@ pub fn define(
     let x86_fmax = x86.by_name("x86_fmax");
     let x86_fmin = x86.by_name("x86_fmin");
     let x86_pop = x86.by_name("x86_pop");
+    let x86_pshuf = x86.by_name("x86_pshuf");
     let x86_push = x86.by_name("x86_push");
     let x86_sdivmodx = x86.by_name("x86_sdivmodx");
     let x86_smulx = x86.by_name("x86_smulx");
@@ -522,8 +522,8 @@ pub fn define(
     let mut e = PerCpuModeEncodings::new();
 
     // x86 requires a data move to the XMM registers which is part of legalize.rs; this simply implements the shuffling of bits
-    e.enc32(splat.bind_vector(I32, 4), r.template("splat").nonrex().opcodes(vec![0x66, 0x0f, 0x3a, 0x22])); // TODO change to pshufd...
-    e.enc64(splat.bind_vector(I32, 4), r.template("splat").nonrex().opcodes(vec![0x66, 0x0f, 0x3a, 0x22]));
+    e.enc32(x86_pshuf.bind_vector(I32, 4), r.template("splat").nonrex().opcodes(vec![0x66, 0x0f, 0x70]));
+    e.enc64(x86_pshuf.bind_vector(I32, 4), r.template("splat").nonrex().opcodes(vec![0x66, 0x0f, 0x70]));
 
     e.enc_i32_i64(iadd, rec_rr.opcodes(vec![0x01]));
     e.enc_i32_i64(isub, rec_rr.opcodes(vec![0x29]));

@@ -249,5 +249,32 @@ pub fn define(
         .operands_out(vec![y, rflags]),
     );
 
+    let TxN = &TypeVar::new(
+        "TxN",
+        "A SIMD vector type",
+        TypeSetBuilder::new()
+            .ints(Interval::All)
+            .floats(Interval::All)
+            .bools(Interval::All)
+            .simd_lanes(Interval::All)
+            .includes_scalars(false)
+            .build(),
+    );
+    let a = &operand("a", TxN);
+    //let b = &operand("b", TxN);
+    ig.push(
+        Inst::new(
+            "x86_pshuf",
+            r#"
+    Shuffle Packed -- copies data from either memory or lanes in an extended
+    register and re-orders the data according to the passed immediate byte.
+    TODO allow memory type here
+    TODO how to allow passing in immediate during code generation?
+    "#,
+        )
+            .operands_in(vec![a])
+            .operands_out(vec![a]),
+    );
+
     ig.build()
 }
