@@ -520,6 +520,18 @@ pub fn define(
     // Definitions.
     let mut e = PerCpuModeEncodings::new();
 
+    {
+        use crate::cdsl::instructions::ValueTypeOrAny::ValueType;
+        use crate::cdsl::types::ValueType::Vector;
+        use crate::cdsl::types::VectorType;
+        use crate::cdsl::types::LaneType;
+        let splat = shared.by_name("splat").clone();
+        let value_types = vec![ValueType(Vector(VectorType::new(LaneType::int_from_bits(32), 4)))];
+        let bound_splat = BoundInstruction { inst: splat, value_types };
+        e.enc32(bound_splat.clone(), r.template("splat").nonrex().opcodes(vec![0x66, 0x0f, 0x3a, 0x22])); // TODO change to pshufd...
+        e.enc64(bound_splat.clone(), r.template("splat").nonrex().opcodes(vec![0x66, 0x0f, 0x3a, 0x22]));
+    }
+
     e.enc_i32_i64(iadd, rec_rr.opcodes(vec![0x01]));
     e.enc_i32_i64(isub, rec_rr.opcodes(vec![0x29]));
     e.enc_i32_i64(band, rec_rr.opcodes(vec![0x21]));
