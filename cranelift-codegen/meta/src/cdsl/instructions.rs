@@ -1087,24 +1087,11 @@ fn bind(
     }
 
     verify_polymorphic_binding(&inst, &value_types);
-//    match &inst.polymorphic_info {
-//        Some(poly) => {
-//            assert!(
-//                value_types.len() <= 1 + poly.other_typevars.len(),
-//                format!("trying to bind too many types for {}", inst.name)
-//            );
-//        }
-//        None => {
-//            panic!(format!(
-//                "trying to bind a type for {} which is not a polymorphic instruction",
-//                inst.name
-//            ));
-//        }
-//    }
 
     BoundInstruction { inst, value_types }
 }
 
+/// Helper to verify that binding types to the instruction does not violate polymorphic rules
 fn verify_polymorphic_binding(
     inst: &Instruction,
     value_types: &Vec<ValueTypeOrAny>,
