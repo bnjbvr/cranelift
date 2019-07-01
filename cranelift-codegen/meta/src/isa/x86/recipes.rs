@@ -481,6 +481,21 @@ pub fn define<'shared>(
             ),
     );
 
+    {
+        recipes.add_template_recipe(
+            EncodingRecipeBuilder::new("splat", f_unary, 2)
+                .operands_in(vec![gpr])
+                .operands_out(vec![fpr])
+                .emit(
+                    r#"
+                    {{PUT_OP}}(bits, rex2(in_reg0, out_reg0), sink);
+                    modrm_rr(in_reg0, out_reg0, sink);
+                    sink.put1(0);
+                "#,
+                ),
+        );
+    }
+
     // XX /r with operands swapped. (RM form).
     recipes.add_template_recipe(
         EncodingRecipeBuilder::new("rrx", f_binary, 1)
