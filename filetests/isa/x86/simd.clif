@@ -1,0 +1,23 @@
+test binemit
+; set opt_level=best
+target x86_64
+
+; The binary encodings can be verified with the command:
+;
+;   sed -ne 's/^ *; asm: *//p' filetests/isa/x86/shrink.clif | llvm-mc -show-encoding -triple=x86_64
+;
+
+; run with `target/debug/clif-util test -v filetests/isa/x86/simd.clif`
+;function %test_simple() {
+;ebb0:
+;    [RexOp1pu_id#b8, %rax]  v1 = iconst.i32 42  ; bin: 40 b8 0000002a
+;    [Op1pu_id#b8, %rax]     v2 = iconst.i32 42  ; bin: b8 0000002a
+;    [Op1ret#c3]             return              ; bin: c3
+;}
+
+function %test_simd() {
+ebb0:
+[-, %rax]    v0 = iconst.i32 42
+[-, %xmm0]    v1 = splat.i32x4 v0          ; bin: c3
+    return
+}
