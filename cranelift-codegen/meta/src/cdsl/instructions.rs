@@ -12,7 +12,7 @@ use crate::cdsl::formats::{
 };
 use crate::cdsl::operands::Operand;
 use crate::cdsl::type_inference::Constraint;
-use crate::cdsl::types::{LaneType, ValueType};
+use crate::cdsl::types::{LaneType, ValueType, VectorType};
 use crate::cdsl::typevar::TypeVar;
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -188,6 +188,14 @@ impl Instruction {
     pub fn bind(&self, lane_type: impl Into<LaneType>) -> BoundInstruction {
         bind(self.clone(), Some(lane_type.into()), Vec::new())
     }
+
+    pub fn bind_vector(&self, lane_type: impl Into<LaneType>, num_lanes: u64) -> BoundInstruction {
+        let vector_type = ValueType::Vector(VectorType::new(lane_type.into(), num_lanes));
+        let value_types = vec![ValueTypeOrAny::ValueType(vector_type)];
+        verify_polymorphic_binding(self, &value_types);
+        BoundInstruction { inst: self.clone(), value_types }
+    }
+
     pub fn bind_any(&self) -> BoundInstruction {
         bind(self.clone(), None, Vec::new())
     }
@@ -1078,6 +1086,29 @@ fn bind(
         }
     }
 
+    verify_polymorphic_binding(&inst, &value_types);
+//    match &inst.polymorphic_info {
+//        Some(poly) => {
+//            assert!(
+//                value_types.len() <= 1 + poly.other_typevars.len(),
+//                format!("trying to bind too many types for {}", inst.name)
+//            );
+//        }
+//        None => {
+//            panic!(format!(
+//                "trying to bind a type for {} which is not a polymorphic instruction",
+//                inst.name
+//            ));
+//        }
+//    }
+
+    BoundInstruction { inst, value_types }
+}
+
+fn verify_polymorphic_binding(
+    inst: &Instruction,
+    value_types: &Vec<ValueTypeOrAny>,
+) {
     match &inst.polymorphic_info {
         Some(poly) => {
             assert!(
@@ -1092,6 +1123,4 @@ fn bind(
             ));
         }
     }
-
-    BoundInstruction { inst, value_types }
 }

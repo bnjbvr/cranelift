@@ -349,6 +349,7 @@ pub fn define(
     let sload8 = shared.by_name("sload8");
     let sload8_complex = shared.by_name("sload8_complex");
     let spill = shared.by_name("spill");
+    let splat = shared.by_name("splat").clone();
     let sqrt = shared.by_name("sqrt");
     let sshr = shared.by_name("sshr");
     let sshr_imm = shared.by_name("sshr_imm");
@@ -520,17 +521,9 @@ pub fn define(
     // Definitions.
     let mut e = PerCpuModeEncodings::new();
 
-    {
-        use crate::cdsl::instructions::ValueTypeOrAny::ValueType;
-        use crate::cdsl::types::ValueType::Vector;
-        use crate::cdsl::types::VectorType;
-        use crate::cdsl::types::LaneType;
-        let splat = shared.by_name("splat").clone();
-        let value_types = vec![ValueType(Vector(VectorType::new(LaneType::int_from_bits(32), 4)))];
-        let bound_splat = BoundInstruction { inst: splat, value_types };
-        e.enc32(bound_splat.clone(), r.template("splat").nonrex().opcodes(vec![0x66, 0x0f, 0x3a, 0x22])); // TODO change to pshufd...
-        e.enc64(bound_splat.clone(), r.template("splat").nonrex().opcodes(vec![0x66, 0x0f, 0x3a, 0x22]));
-    }
+    // x86 requires a data move to the XMM registers which is part of legalize.rs; this simply implements the shuffling of bits
+    e.enc32(splat.bind_vector(I32, 4), r.template("splat").nonrex().opcodes(vec![0x66, 0x0f, 0x3a, 0x22])); // TODO change to pshufd...
+    e.enc64(splat.bind_vector(I32, 4), r.template("splat").nonrex().opcodes(vec![0x66, 0x0f, 0x3a, 0x22]));
 
     e.enc_i32_i64(iadd, rec_rr.opcodes(vec![0x01]));
     e.enc_i32_i64(isub, rec_rr.opcodes(vec![0x29]));
