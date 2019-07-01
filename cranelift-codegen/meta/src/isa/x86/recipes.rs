@@ -484,7 +484,7 @@ pub fn define<'shared>(
     {
         recipes.add_template_recipe(
             EncodingRecipeBuilder::new("splat", f_unary, 2)
-                .operands_in(vec![gpr])
+                .operands_in(vec![fpr])
                 .operands_out(vec![fpr])
                 .emit(
                     r#"
