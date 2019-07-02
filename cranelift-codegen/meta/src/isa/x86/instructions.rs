@@ -7,7 +7,7 @@ use crate::cdsl::instructions::{
 use crate::cdsl::operands::{create_operand as operand, create_operand_doc as operand_doc};
 use crate::cdsl::types::ValueType;
 use crate::cdsl::typevar::{Interval, TypeSetBuilder, TypeVar};
-use crate::shared::types;
+use crate::shared::{types, OperandKinds, immediates};
 
 pub fn define(
     mut all_instructions: &mut AllInstructions,
@@ -249,6 +249,9 @@ pub fn define(
         .operands_out(vec![y, rflags]),
     );
 
+    // TODO eventually move these to the top of the function
+    let immediates = OperandKinds::from(immediates::define());
+    let uimm8 = immediates.by_name("uimm8");
     let TxN = &TypeVar::new(
         "TxN",
         "A SIMD vector type",
@@ -260,19 +263,18 @@ pub fn define(
             .includes_scalars(false)
             .build(),
     );
-    let a = &operand("a", TxN);
-    //let b = &operand("b", TxN);
+    let a = &operand_doc("a", TxN, "An XMM register");
+    let i = &operand_doc("i", uimm8, "An ordering operand controlling the copying of data from the source to the destination; see PSHUFD in Intel manual for details");
+
     ig.push(
         Inst::new(
             "x86_pshuf",
             r#"
     Shuffle Packed -- copies data from either memory or lanes in an extended
     register and re-orders the data according to the passed immediate byte.
-    TODO allow memory type here
-    TODO how to allow passing in immediate during code generation?
     "#,
         )
-            .operands_in(vec![a])
+            .operands_in(vec![a, i]) // TODO allow copying from memory here (need more permissive type than TxN)
             .operands_out(vec![a]),
     );
 

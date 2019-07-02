@@ -359,6 +359,7 @@ pub fn define<'shared>(
     // Format shorthands, prefixed with f_.
     let f_binary = formats.by_name("Binary");
     let f_binary_imm = formats.by_name("BinaryImm");
+    let f_binary_imm8 = formats.by_name("ExtractLane"); // TODO this would preferably retrieve a BinaryImm8 format but because formats are compared structurally and ExtractLane has the same structure this is impossible--if we rename ExtractLane, it may even impact parsing
     let f_branch = formats.by_name("Branch");
     let f_branch_float = formats.by_name("BranchFloat");
     let f_branch_int = formats.by_name("BranchInt");
@@ -482,15 +483,18 @@ pub fn define<'shared>(
     );
 
     {
+        let format = formats.get(f_binary_imm8);
         recipes.add_template_recipe(
-            EncodingRecipeBuilder::new("splat", f_unary, 2)
+            EncodingRecipeBuilder::new("splat", f_binary_imm8, 2)
                 .operands_in(vec![fpr])
                 .operands_out(vec![fpr])
+                .inst_predicate(InstructionPredicate::new_is_unsigned_int(format, "lane", 8, 0)) // TODO if the format name is changed then "lane" should be renamed to something more appropriate--ordering mask? broadcast immediate?
                 .emit(
                     r#"
                     {{PUT_OP}}(bits, rex2(in_reg0, out_reg0), sink);
                     modrm_rr(in_reg0, out_reg0, sink);
-                    sink.put1(0);
+                    let imm:i64 = lane.into();
+                    sink.put1(imm as u8);
                 "#,
                 ),
         );

@@ -56,6 +56,7 @@ pub fn define(shared: &mut SharedDefinitions, x86_instructions: &InstructionGrou
     let floatcc = shared.operand_kinds.by_name("floatcc");
     let imm64 = shared.operand_kinds.by_name("imm64");
     let intcc = shared.operand_kinds.by_name("intcc");
+    let uimm8 = shared.operand_kinds.by_name("uimm8");
 
     // Division and remainder.
     //
@@ -305,11 +306,12 @@ pub fn define(shared: &mut SharedDefinitions, x86_instructions: &InstructionGrou
     .chain_with(shared.transform_groups.by_name("narrow").id);
 
     // SIMD
+    let broadcast_immediate = Literal::constant(uimm8, 0x00);
     narrow.legalize(
         def!(y = splat(x)),
         vec![
-            def!(a = bitcast(x)),
-            def!(y = x86_pshuf(a))
+            def!(a = bitcast(x)), // this should translate to an x86 MOV or PINSR to get the value in an XMM register
+            def!(y = x86_pshuf(a, broadcast_immediate)) // this should broadcast the bytes in the XMM register with PSHUF
         ]
     );
 

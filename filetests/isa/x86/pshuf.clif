@@ -1,0 +1,11 @@
+test binemit
+; set opt_level=best
+target x86_64
+
+function %test_pshuf() {
+ebb0:
+[-, %rax]   v0 = iconst.i32 42
+[-, %xmm0]  v1 = bitcast.i32x4 v0    ; TODO add encoding for bitcast
+[-, %xmm0]  v2 = x86_pshuf v1, 0     ; bin: 66 0f 70 c0 00
+            return
+}
