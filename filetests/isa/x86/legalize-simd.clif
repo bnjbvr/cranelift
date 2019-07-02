@@ -1,0 +1,11 @@
+test compile
+target x86_64
+
+function %test_simd() -> i32x4 {
+ebb0:
+    v0 = iconst.i32 42
+    v1 = splat.i32x4 v0
+    ; sameln: v2 = bitcast.i32x4 v0
+    ; nextln: v1 = x86_pshuf.i32x4 v2
+    return v1
+}
