@@ -85,15 +85,6 @@ pub fn define(shared: &mut SharedDefinitions, x86_instructions: &InstructionGrou
         vec![def!((res_lo, res_hi) = x86_smulx(x, y))],
     );
 
-    // SIMD
-    group.legalize(
-        def!(y = splat(x)),
-        vec![
-            def!(a = bitcast(x)),
-            def!(y = x86_pshuf(a))
-        ]
-    );
-
     // Floating point condition codes.
     //
     // The 8 condition codes in `supported_floatccs` are directly supported by a
@@ -302,4 +293,25 @@ pub fn define(shared: &mut SharedDefinitions, x86_instructions: &InstructionGrou
     );
 
     group.build_and_add_to(&mut shared.transform_groups);
+
+    let mut narrow = TransformGroupBuilder::new(
+        "x86_narrow",
+        r#"
+    Legalize instructions by narrowing.
+
+    Use x86-specific instructions if needed."#,
+    )
+    .isa("x86")
+    .chain_with(shared.transform_groups.by_name("narrow").id);
+
+    // SIMD
+    narrow.legalize(
+        def!(y = splat(x)),
+        vec![
+            def!(a = bitcast(x)),
+            def!(y = x86_pshuf(a))
+        ]
+    );
+
+    narrow.build_and_add_to(&mut shared.transform_groups);
 }
