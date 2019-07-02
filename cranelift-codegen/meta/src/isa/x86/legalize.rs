@@ -86,13 +86,13 @@ pub fn define(shared: &mut SharedDefinitions, x86_instructions: &InstructionGrou
     );
 
     // SIMD
-//    group.legalize(
-//        def!(y = splat(x)),
-//        vec![
-//            def!(a = bitcast(x)),
-//            def!(y = x86_pshuf(a))
-//        ]
-//    );
+    group.legalize(
+        def!(y = splat(x)),
+        vec![
+            def!(a = bitcast(x)),
+            def!(y = x86_pshuf(a))
+        ]
+    );
 
     // Floating point condition codes.
     //
