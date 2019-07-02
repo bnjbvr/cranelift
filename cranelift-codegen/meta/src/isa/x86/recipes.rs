@@ -482,24 +482,6 @@ pub fn define<'shared>(
             ),
     );
 
-    {
-        let format = formats.get(f_binary_imm8);
-        recipes.add_template_recipe(
-            EncodingRecipeBuilder::new("splat", f_binary_imm8, 2)
-                .operands_in(vec![fpr])
-                .operands_out(vec![fpr])
-                .inst_predicate(InstructionPredicate::new_is_unsigned_int(format, "lane", 8, 0)) // TODO if the format name is changed then "lane" should be renamed to something more appropriate--ordering mask? broadcast immediate?
-                .emit(
-                    r#"
-                    {{PUT_OP}}(bits, rex2(in_reg0, out_reg0), sink);
-                    modrm_rr(in_reg0, out_reg0, sink);
-                    let imm:i64 = lane.into();
-                    sink.put1(imm as u8);
-                "#,
-                ),
-        );
-    }
-
     // XX /r with operands swapped. (RM form).
     recipes.add_template_recipe(
         EncodingRecipeBuilder::new("rrx", f_binary, 1)
@@ -803,6 +785,25 @@ pub fn define<'shared>(
                         let imm: i64 = imm.into();
                         sink.put4(imm as u32);
                     "#,
+                ),
+        );
+    }
+
+    // XX /r ib with 8-bit unsigned immediate (e.g. for pshuf)
+    {
+        let format = formats.get(f_binary_imm8);
+        recipes.add_template_recipe(
+            EncodingRecipeBuilder::new("r_ib_unsigned", f_binary_imm8, 2)
+                .operands_in(vec![fpr])
+                .operands_out(vec![fpr])
+                .inst_predicate(InstructionPredicate::new_is_unsigned_int(format, "lane", 8, 0)) // TODO if the format name is changed then "lane" should be renamed to something more appropriate--ordering mask? broadcast immediate?
+                .emit(
+                    r#"
+                    {{PUT_OP}}(bits, rex2(in_reg0, out_reg0), sink);
+                    modrm_rr(in_reg0, out_reg0, sink);
+                    let imm:i64 = lane.into();
+                    sink.put1(imm as u8);
+                "#,
                 ),
         );
     }

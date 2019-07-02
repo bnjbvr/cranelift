@@ -460,6 +460,7 @@ pub fn define(
     let rec_pushq = r.template("pushq");
     let rec_ret = r.template("ret");
     let rec_r_ib = r.template("r_ib");
+    let rec_r_ib_unsigned = r.template("r_ib_unsigned");
     let rec_r_id = r.template("r_id");
     let rec_rcmp = r.template("rcmp");
     let rec_rcmp_ib = r.template("rcmp_ib");
@@ -522,8 +523,8 @@ pub fn define(
     let mut e = PerCpuModeEncodings::new();
 
     // x86 requires a data move to the XMM registers which is part of legalize.rs; this simply implements the shuffling of bits
-    e.enc32(x86_pshuf.bind_vector(I32, 4), r.template("splat").nonrex().opcodes(vec![0x66, 0x0f, 0x70]));
-    e.enc64(x86_pshuf.bind_vector(I32, 4), r.template("splat").nonrex().opcodes(vec![0x66, 0x0f, 0x70]));
+    e.enc32(x86_pshuf.bind_vector(I32, 4), rec_r_ib_unsigned.nonrex().opcodes(vec![0x66, 0x0f, 0x70]));
+    e.enc64(x86_pshuf.bind_vector(I32, 4), rec_r_ib_unsigned.nonrex().opcodes(vec![0x66, 0x0f, 0x70])); // TODO can't use enc_both here because it forces a .rex() encoding
 
     e.enc_i32_i64(iadd, rec_rr.opcodes(vec![0x01]));
     e.enc_i32_i64(isub, rec_rr.opcodes(vec![0x29]));
