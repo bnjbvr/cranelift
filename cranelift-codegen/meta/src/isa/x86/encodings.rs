@@ -1449,6 +1449,10 @@ pub fn define(
         rec_frurm.opcodes(vec![0x66, 0x0f, 0x6e]),
     );
     e.enc_both(
+        bitcast.bind_vector(I32, 4).bind(I32), // from i32 to i32x4
+        rec_frurm.opcodes(vec![0x66, 0x0f, 0x6e]),
+    );
+    e.enc_both(
         bitcast.bind(I32).bind(F32),
         rec_rfumr.opcodes(vec![0x66, 0x0f, 0x7e]),
     );
