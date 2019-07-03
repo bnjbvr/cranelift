@@ -69,11 +69,11 @@ impl ArgAssigner for Args {
     fn assign(&mut self, arg: &AbiParam) -> ArgAction {
         let ty = arg.value_type;
 
-        // Check for a legal type.
-        // We don't support SIMD yet, so break all vectors down.
+        // Vectors should stay in vector registers TODO perhaps this should be conditional on some ISA feature (e.g. SSE) and if not present do a ValueConversion
         if ty.is_vector() {
-            return ArgAction::Assign(ArgumentLoc::Unassigned);
-            //return ValueConversion::VectorSplit.into();
+            let reg = FPR.unit(self.fpr_used);
+            self.fpr_used += 1;
+            return ArgumentLoc::Reg(reg).into();
         }
 
         // Large integers and booleans are broken down to fit in a register.
