@@ -3,7 +3,7 @@ set probestack_enabled=false
 target x86_64
 
 ; use baldrdash calling convention here for simplicity (avoids prologue, epilogue)
-function %test_simd() -> i32x4 [%xmm0] baldrdash {
+function %test_simd() -> i32x4 baldrdash {
 ebb0:
     v0 = iconst.i32 42
     v1 = splat.i32x4 v0
