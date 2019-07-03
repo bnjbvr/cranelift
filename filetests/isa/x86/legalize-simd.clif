@@ -7,7 +7,15 @@ function %test_simd() -> i32x4 [%xmm0] baldrdash {
 ebb0:
     v0 = iconst.i32 42
     v1 = splat.i32x4 v0
-    ; sameln: v2 = bitcast.i32x4 v0
-    ; nextln: v1 = x86_pshuf.i32x4 v2, 0
     return v1
 }
+
+; sameln: function %test_simd() -> i32x4 [%xmm0] baldrdash {
+; nextln:   ss0 = incoming_arg 0, offset 0
+; nextln: 
+; nextln:   ebb0:
+; nextln:     v0 = iconst.i32 42
+; nextln:     v2 = bitcast.i32x4 v0
+; nextln:     v1 = x86_pshuf v2, 0
+; nextln:     return v1
+; nextln: }
