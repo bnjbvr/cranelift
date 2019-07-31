@@ -77,6 +77,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let label = ValueLabel::from_u32(*local_index);
             builder.set_val_label(val, label);
         }
+
         /********************************** Globals ****************************************
          *  `get_global` and `set_global` are handled by the environment.
          ***********************************************************************************/
@@ -103,6 +104,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                 }
             }
         }
+
         /********************************* Stack misc ***************************************
          *  `drop`, `nop`, `unreachable` and `select`.
          ***********************************************************************************/
@@ -114,12 +116,13 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             state.push1(builder.ins().select(cond, arg1, arg2));
         }
         Operator::Nop => {
-            // We do nothing
+            // We do nothing.
         }
         Operator::Unreachable => {
             builder.ins().trap(ir::TrapCode::UnreachableCodeReached);
             state.reachable = false;
         }
+
         /***************************** Control flow blocks **********************************
          *  When starting a control flow block, we create a new `Ebb` that will hold the code
          *  after the block, and we push a frame on the control stack. Depending on the type
@@ -138,6 +141,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             }
             state.push_block(next, num_return_values(*ty)?);
         }
+
         Operator::Loop { ty } => {
             let loop_body = builder.create_ebb();
             let next = builder.create_ebb();
@@ -149,6 +153,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             builder.switch_to_block(loop_body);
             environ.translate_loop_header(builder.cursor())?;
         }
+
         Operator::If { ty } => {
             let val = state.pop1();
             let if_not = builder.create_ebb();
@@ -173,6 +178,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             }
             state.push_if(jump_inst, if_not, num_return_values(*ty)?);
         }
+
         Operator::Else => {
             // We take the control frame pushed by the if, use its ebb as the else body
             // and push a new control frame with a new ebb for the code after the if/then/else
@@ -204,6 +210,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             builder.seal_block(else_ebb);
             builder.switch_to_block(else_ebb);
         }
+
         Operator::End => {
             let frame = state.control_stack.pop().unwrap();
             if !builder.is_unreachable() || !builder.is_pristine() {
@@ -223,6 +230,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
                 .stack
                 .extend_from_slice(builder.ebb_params(frame.following_code()));
         }
+
         /**************************** Branch instructions *********************************
          * The branch instructions all have as arguments a target nesting level, which
          * corresponds to how many control stack frames do we have to pop to get the
@@ -263,7 +271,9 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             state.popn(return_count);
             state.reachable = false;
         }
+
         Operator::BrIf { relative_depth } => translate_br_if(*relative_depth, builder, state),
+
         Operator::BrTable { table } => {
             let (depths, default) = table.read_table()?;
             let mut min_depth = default;
@@ -344,6 +354,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             }
             state.reachable = false;
         }
+
         Operator::Return => {
             let (return_count, br_destination) = {
                 let frame = &mut state.control_stack[0];
@@ -361,6 +372,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             state.popn(return_count);
             state.reachable = false;
         }
+
         /************************************ Calls ****************************************
          * The call instructions pop off their arguments from the stack and append their
          * return values to it. `call_indirect` needs environment support because there is an
@@ -385,6 +397,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             state.popn(num_args);
             state.pushn(inst_results);
         }
+
         Operator::CallIndirect { index, table_index } => {
             // `index` is the index of the function's signature and `table_index` is the index of
             // the table to search the function in.
@@ -409,6 +422,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             state.popn(num_args);
             state.pushn(inst_results);
         }
+
         /******************************* Memory management ***********************************
          * Memory management is handled by environment. It is usually translated into calls to
          * special functions.
@@ -421,11 +435,13 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let val = state.pop1();
             state.push1(environ.translate_memory_grow(builder.cursor(), heap_index, heap, val)?)
         }
+
         Operator::MemorySize { reserved } => {
             let heap_index = MemoryIndex::from_u32(*reserved);
             let heap = state.get_heap(builder.func, *reserved, environ)?;
             state.push1(environ.translate_memory_size(builder.cursor(), heap_index, heap)?);
         }
+
         /******************************* Load instructions ***********************************
          * Wasm specifies an integer alignment flag but we drop it in Cranelift.
          * The memory base address is provided by the environment.
@@ -500,6 +516,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         } => {
             translate_load(*offset, ir::Opcode::Load, F64, builder, state, environ)?;
         }
+
         /****************************** Store instructions ***********************************
          * Wasm specifies an integer alignment flag but we drop it in Cranelift.
          * The memory base address is provided by the environment.
@@ -539,6 +556,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         } => {
             translate_store(*offset, ir::Opcode::Istore32, builder, state, environ)?;
         }
+
         /****************************** Nullary Operators ************************************/
         Operator::I32Const { value } => state.push1(builder.ins().iconst(I32, i64::from(*value))),
         Operator::I64Const { value } => state.push1(builder.ins().iconst(I64, *value)),
@@ -548,6 +566,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         Operator::F64Const { value } => {
             state.push1(builder.ins().f64const(f64_translation(*value)));
         }
+
         /******************************* Unary Operators *************************************/
         Operator::I32Clz | Operator::I64Clz => {
             let arg = state.pop1();
@@ -561,6 +580,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let arg = state.pop1();
             state.push1(builder.ins().popcnt(arg));
         }
+
         Operator::I64ExtendSI32 => {
             let val = state.pop1();
             state.push1(builder.ins().sextend(I64, val));
@@ -573,6 +593,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let val = state.pop1();
             state.push1(builder.ins().ireduce(I32, val));
         }
+
         Operator::F32Sqrt | Operator::F64Sqrt => {
             let arg = state.pop1();
             state.push1(builder.ins().sqrt(arg));
@@ -601,6 +622,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let arg = state.pop1();
             state.push1(builder.ins().fneg(arg));
         }
+
         Operator::F64ConvertUI64 | Operator::F64ConvertUI32 => {
             let val = state.pop1();
             state.push1(builder.ins().fcvt_from_uint(F64, val));
@@ -617,6 +639,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let val = state.pop1();
             state.push1(builder.ins().fcvt_from_uint(F32, val));
         }
+
         Operator::F64PromoteF32 => {
             let val = state.pop1();
             state.push1(builder.ins().fpromote(F64, val));
@@ -625,6 +648,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let val = state.pop1();
             state.push1(builder.ins().fdemote(F32, val));
         }
+
         Operator::I64TruncSF64 | Operator::I64TruncSF32 => {
             let val = state.pop1();
             state.push1(builder.ins().fcvt_to_sint(I64, val));
@@ -641,6 +665,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let val = state.pop1();
             state.push1(builder.ins().fcvt_to_uint(I32, val));
         }
+
         Operator::I64TruncSSatF64 | Operator::I64TruncSSatF32 => {
             let val = state.pop1();
             state.push1(builder.ins().fcvt_to_sint_sat(I64, val));
@@ -657,6 +682,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let val = state.pop1();
             state.push1(builder.ins().fcvt_to_uint_sat(I32, val));
         }
+
         Operator::F32ReinterpretI32 => {
             let val = state.pop1();
             state.push1(builder.ins().bitcast(F32, val));
@@ -673,6 +699,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let val = state.pop1();
             state.push1(builder.ins().bitcast(I64, val));
         }
+
         Operator::I32Extend8S => {
             let val = state.pop1();
             state.push1(builder.ins().ireduce(I8, val));
@@ -703,6 +730,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let val = state.pop1();
             state.push1(builder.ins().sextend(I64, val));
         }
+
         /****************************** Binary Operators ************************************/
         Operator::I32Add | Operator::I64Add => {
             let (arg1, arg2) = state.pop2();
@@ -792,6 +820,7 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let (arg1, arg2) = state.pop2();
             state.push1(builder.ins().fcopysign(arg1, arg2));
         }
+
         /**************************** Comparison Operators **********************************/
         Operator::I32LtS | Operator::I64LtS => {
             translate_icmp(IntCC::SignedLessThan, builder, state)
@@ -840,6 +869,8 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
             let val = builder.ins().is_null(arg);
             state.push1(val);
         }
+
+        /****************************** Not yet implemented ************************************/
         Operator::Wake { .. }
         | Operator::I32Wait { .. }
         | Operator::I64Wait { .. }
@@ -909,19 +940,24 @@ pub fn translate_operator<FE: FuncEnvironment + ?Sized>(
         | Operator::Fence { .. } => {
             wasm_unsupported!("proposed thread operator {:?}", op);
         }
+
+        Operator::TableGet { .. }
+        | Operator::TableSet { .. }
+        | Operator::TableGrow { .. }
+        | Operator::TableSize { .. } => {
+            wasm_unsupported!("proposed reference-type operators: {:?}", op);
+        }
+
         Operator::MemoryInit { .. }
         | Operator::DataDrop { .. }
         | Operator::MemoryCopy
         | Operator::MemoryFill
         | Operator::TableInit { .. }
         | Operator::ElemDrop { .. }
-        | Operator::TableCopy
-        | Operator::TableGet { .. }
-        | Operator::TableSet { .. }
-        | Operator::TableGrow { .. }
-        | Operator::TableSize { .. } => {
+        | Operator::TableCopy => {
             wasm_unsupported!("proposed bulk memory operator {:?}", op);
         }
+
         Operator::V128Load { .. }
         | Operator::V128Store { .. }
         | Operator::V128Const { .. }

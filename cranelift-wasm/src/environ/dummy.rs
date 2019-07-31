@@ -349,6 +349,7 @@ impl<'dummy_environment> FuncEnvironment for DummyFuncEnvironment<'dummy_environ
         _heap: ir::Heap,
         _val: ir::Value,
     ) -> WasmResult<ir::Value> {
+        // Don't do anything and return the failure sentinel value.
         Ok(pos.ins().iconst(I32, -1))
     }
 
@@ -358,6 +359,7 @@ impl<'dummy_environment> FuncEnvironment for DummyFuncEnvironment<'dummy_environ
         _index: MemoryIndex,
         _heap: ir::Heap,
     ) -> WasmResult<ir::Value> {
+        // Don't do anything and return the failure sentinel value.
         Ok(pos.ins().iconst(I32, -1))
     }
 }
