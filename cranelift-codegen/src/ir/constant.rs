@@ -6,6 +6,7 @@
 //! could include: ensuring alignment of constants within the pool, bucketing constants by size.
 
 use crate::ir::Constant;
+use crate::ir::immediates::{Ieee32, Ieee64};
 use cranelift_entity::EntityRef;
 use std::collections::{BTreeMap, HashMap};
 use std::vec::Vec;
@@ -91,6 +92,11 @@ impl ConstantPool {
         }
     }
 
+    /// Looks up a constant previously inserted.
+    pub fn lookup(&self, data: ConstantData) -> Constant {
+        *self.values_to_handles.get(&data).unwrap()
+    }
+
     /// Retrieve the constant data given a handle.
     pub fn get(&self, constant_handle: Constant) -> &ConstantData {
         assert!(self.handles_to_values.contains_key(&constant_handle));
@@ -136,6 +142,20 @@ impl ConstantPool {
     /// Return the combined size of all of the constant values in the pool.
     pub fn byte_size(&self) -> usize {
         self.values_to_handles.keys().map(|c| c.len()).sum()
+    }
+}
+
+impl From<Ieee32> for ConstantData {
+    fn from(imm: Ieee32) -> Self {
+        let bits = imm.bits();
+        (0..4).map(|i| ((bits >> 8*i) & 0xff) as u8).collect()
+    }
+}
+
+impl From<Ieee64> for ConstantData {
+    fn from(imm: Ieee64) -> Self {
+        let bits = imm.bits();
+        (0..8).map(|i| ((bits >> 8*i) & 0xff) as u8).collect()
     }
 }
 

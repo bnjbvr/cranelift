@@ -982,8 +982,8 @@ pub fn define<'shared>(
             ),
     );
 
-    // XX /n Unary with floating point 32-bit immediate equal to zero.
     {
+        // XX /n Unary with floating point 32-bit immediate equal to zero.
         let format = formats.get(f_unary_ieee32);
         recipes.add_template_recipe(
             EncodingRecipeBuilder::new("f32imm_z", f_unary_ieee32, 1)
@@ -996,10 +996,25 @@ pub fn define<'shared>(
                     "#,
                 ),
         );
+
+        // Other float32 immediates.
+        recipes.add_template_recipe(
+            EncodingRecipeBuilder::new("f32imm_riprel", f_unary_ieee32, 5)
+                .operands_out(vec![fpr])
+                .clobbers_flags(false)
+                .emit(
+                    r#"
+                        {{PUT_OP}}(bits, rex2(0, out_reg0), sink);
+                        modrm_riprel(out_reg0, sink);
+                        let cst = func.dfg.constants.lookup(imm.into());
+                        const_disp4(cst, func, sink);
+                    "#,
+                ),
+        );
     }
 
-    // XX /n Unary with floating point 64-bit immediate equal to zero.
     {
+        // XX /n Unary with floating point 64-bit immediate equal to zero.
         let format = formats.get(f_unary_ieee64);
         recipes.add_template_recipe(
             EncodingRecipeBuilder::new("f64imm_z", f_unary_ieee64, 1)
@@ -1009,6 +1024,21 @@ pub fn define<'shared>(
                     r#"
                         {{PUT_OP}}(bits, rex2(out_reg0, out_reg0), sink);
                         modrm_rr(out_reg0, out_reg0, sink);
+                    "#,
+                ),
+        );
+
+        // Other float64 immediates.
+        recipes.add_template_recipe(
+            EncodingRecipeBuilder::new("f64imm_riprel", f_unary_ieee64, 5)
+                .operands_out(vec![fpr])
+                .clobbers_flags(false)
+                .emit(
+                    r#"
+                        {{PUT_OP}}(bits, rex2(0, out_reg0), sink);
+                        modrm_riprel(out_reg0, sink);
+                        let cst = func.dfg.constants.lookup(imm.into());
+                        const_disp4(cst, func, sink);
                     "#,
                 ),
         );

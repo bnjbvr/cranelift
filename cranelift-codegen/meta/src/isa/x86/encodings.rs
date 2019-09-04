@@ -477,7 +477,9 @@ pub fn define(
     let rec_copysp = r.template("copysp");
     let rec_div = r.template("div");
     let rec_debugtrap = r.recipe("debugtrap");
+    let rec_f32imm_riprel = r.template("f32imm_riprel");
     let rec_f32imm_z = r.template("f32imm_z");
+    let rec_f64imm_riprel = r.template("f64imm_riprel");
     let rec_f64imm_z = r.template("f64imm_z");
     let rec_fa = r.template("fa");
     let rec_fax = r.template("fax");
@@ -1552,6 +1554,17 @@ pub fn define(
         rec_f32imm_z.opcodes(vec![0x0f, 0x57]),
         is_zero_32_bit_float.clone(),
     );
+    e.enc_x86_64_instp(
+        f32const,
+        rec_f32imm_z.opcodes(vec![0x0f, 0x57]),
+        is_zero_32_bit_float,
+    );
+
+    // rip-relative movss
+    e.enc_x86_64(
+        f32const,
+        rec_f32imm_riprel.opcodes(vec![0xf3, 0x0f, 0x10]),
+    );
 
     let f_unary_ieee64 = formats.get(formats.by_name("UnaryIeee64"));
     let is_zero_64_bit_float = InstructionPredicate::new_is_zero_64bit_float(f_unary_ieee64, "imm");
@@ -1560,16 +1573,16 @@ pub fn define(
         rec_f64imm_z.opcodes(vec![0x66, 0x0f, 0x57]),
         is_zero_64_bit_float.clone(),
     );
-
-    e.enc_x86_64_instp(
-        f32const,
-        rec_f32imm_z.opcodes(vec![0x0f, 0x57]),
-        is_zero_32_bit_float,
-    );
     e.enc_x86_64_instp(
         f64const,
         rec_f64imm_z.opcodes(vec![0x66, 0x0f, 0x57]),
         is_zero_64_bit_float,
+    );
+
+    // rip-relative movsd
+    e.enc_x86_64(
+        f64const,
+        rec_f64imm_riprel.opcodes(vec![0xf2, 0x0f, 0x10]),
     );
 
     // movd

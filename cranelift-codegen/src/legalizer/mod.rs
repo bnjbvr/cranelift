@@ -405,7 +405,7 @@ fn expand_br_icmp(
     cfg.recompute_ebb(pos.func, old_ebb);
 }
 
-/// Expand illegal `f32const` and `f64const` instructions.
+/// Add fconst values to constant pools.
 fn expand_fconst(
     inst: ir::Inst,
     func: &mut ir::Function,
@@ -415,22 +415,26 @@ fn expand_fconst(
     let ty = func.dfg.value_type(func.dfg.first_result(inst));
     debug_assert!(!ty.is_vector(), "Only scalar fconst supported: {}", ty);
 
-    // In the future, we may want to generate constant pool entries for these constants, but for
-    // now use an `iconst` and a bit cast.
-    let mut pos = FuncCursor::new(func).at_inst(inst);
-    pos.use_srcloc(inst);
-    let ival = match pos.func.dfg[inst] {
+    let bytes = match func.dfg[inst] {
         ir::InstructionData::UnaryIeee32 {
             opcode: ir::Opcode::F32const,
             imm,
-        } => pos.ins().iconst(ir::types::I32, i64::from(imm.bits())),
+        } => {
+            imm.into()
+        },
+
         ir::InstructionData::UnaryIeee64 {
             opcode: ir::Opcode::F64const,
             imm,
-        } => pos.ins().iconst(ir::types::I64, imm.bits() as i64),
-        _ => panic!("Expected fconst: {}", pos.func.dfg.display_inst(inst, None)),
+        } => {
+            imm.into()
+        }
+
+        _ => panic!("Expected fconst: {}", func.dfg.display_inst(inst, None)),
     };
-    pos.func.dfg.replace(inst).bitcast(ty, ival);
+
+    // Note we don't remove the instruction: it is supposed to get legalized later on.
+    func.dfg.constants.insert(bytes);
 }
 
 /// Expand illegal `stack_load` instructions.
