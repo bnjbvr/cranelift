@@ -353,10 +353,15 @@ impl InstructionBuilder {
             .filter_map(|(i, op)| if op.is_value() { Some(i) } else { None })
             .collect();
 
-        let format_index = format_registry.lookup(&operands_in);
-        let format = format_registry.get(format_index);
+        let format = format_registry.lookup(&operands_in);
+        let ctrl_typevar_candidate = format_registry
+            .get(format)
+            .typevar_operand
+            .and_then(|i| value_opnums.get(i))
+            .and_then(|j| operands_in[*j].type_var());
+
         let polymorphic_info =
-            verify_polymorphic(&operands_in, &operands_out, &format, &value_opnums);
+            verify_polymorphic(&operands_in, &operands_out, ctrl_typevar_candidate);
 
         // Infer from output operands whether an instruciton clobbers CPU flags or not.
         let writes_cpu_flags = operands_out.iter().any(|op| op.is_cpu_flags());
@@ -372,7 +377,7 @@ impl InstructionBuilder {
                 operands_in,
                 operands_out,
                 constraints: self.constraints.unwrap_or_else(Vec::new),
-                format: format_index,
+                format,
                 polymorphic_info,
                 value_opnums,
                 value_results,
@@ -446,8 +451,7 @@ impl BoundInstruction {
 fn verify_polymorphic(
     operands_in: &Vec<Operand>,
     operands_out: &Vec<Operand>,
-    format: &InstructionFormat,
-    value_opnums: &Vec<usize>,
+    ctrl_typevar_candidate: Option<&TypeVar>,
 ) -> Option<PolymorphicInfo> {
     // The instruction is polymorphic if it has one free input or output operand.
     let is_polymorphic = operands_in
@@ -462,27 +466,21 @@ fn verify_polymorphic(
     }
 
     // Verify the use of type variables.
-    let tv_op = format.typevar_operand;
     let mut maybe_error_message = None;
-    if let Some(tv_op) = tv_op {
-        if tv_op < value_opnums.len() {
-            let op_num = value_opnums[tv_op];
-            let tv = operands_in[op_num].type_var().unwrap();
-            let free_typevar = tv.free_typevar();
-            if (free_typevar.is_some() && tv == &free_typevar.unwrap())
-                || tv.singleton_type().is_some()
-            {
-                match is_ctrl_typevar_candidate(tv, &operands_in, &operands_out) {
-                    Ok(other_typevars) => {
-                        return Some(PolymorphicInfo {
-                            use_typevar_operand: true,
-                            ctrl_typevar: tv.clone(),
-                            other_typevars,
-                        });
-                    }
-                    Err(error_message) => {
-                        maybe_error_message = Some(error_message);
-                    }
+    if let Some(tv) = ctrl_typevar_candidate {
+        let free_typevar = tv.free_typevar();
+        if (free_typevar.is_some() && tv == &free_typevar.unwrap()) || tv.singleton_type().is_some()
+        {
+            match is_ctrl_typevar_candidate(tv, &operands_in, &operands_out) {
+                Ok(other_typevars) => {
+                    return Some(PolymorphicInfo {
+                        use_typevar_operand: true,
+                        ctrl_typevar: tv.clone(),
+                        other_typevars,
+                    });
+                }
+                Err(error_message) => {
+                    maybe_error_message = Some(error_message);
                 }
             }
         }
