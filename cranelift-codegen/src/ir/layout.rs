@@ -126,6 +126,10 @@ impl ProgramOrder for Layout {
         a_seq.cmp(&b_seq)
     }
 
+    fn of<A>(&self, a: A) -> u32 where A: Into<ExpandedProgramPoint> {
+        self.seq(a)
+    }
+
     fn is_ebb_gap(&self, inst: Inst, ebb: Ebb) -> bool {
         let i = &self.insts[inst];
         let e = &self.ebbs[ebb];

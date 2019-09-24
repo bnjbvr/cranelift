@@ -137,6 +137,10 @@ pub trait ProgramOrder {
         A: Into<ExpandedProgramPoint>,
         B: Into<ExpandedProgramPoint>;
 
+    /// Returns an arbitrary ordering value of a given program point.
+    fn of<A>(&self, a: A) -> u32
+        where A: Into<ExpandedProgramPoint>;
+
     /// Is the range from `inst` to `ebb` just the gap between consecutive EBBs?
     ///
     /// This returns true if `inst` is the terminator in the EBB immediately before `ebb`.
