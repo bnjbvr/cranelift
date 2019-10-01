@@ -67,7 +67,7 @@ impl<T: ReservedValue> PackedOption<T> {
 impl<T: ReservedValue> Default for PackedOption<T> {
     /// Create a default packed option representing `None`.
     fn default() -> Self {
-        PackedOption(T::reserved_value())
+        Self(T::reserved_value())
     }
 }
 
@@ -78,7 +78,7 @@ impl<T: ReservedValue> From<T> for PackedOption<T> {
             t != T::reserved_value(),
             "Can't make a PackedOption from the reserved value."
         );
-        PackedOption(t)
+        Self(t)
     }
 }
 
@@ -121,7 +121,7 @@ mod tests {
 
     impl ReservedValue for NoC {
         fn reserved_value() -> Self {
-            NoC(13)
+            Self(13)
         }
     }
 
@@ -143,7 +143,7 @@ mod tests {
 
     impl ReservedValue for Ent {
         fn reserved_value() -> Self {
-            Ent(13)
+            Self(13)
         }
     }
 
