@@ -107,7 +107,7 @@ impl ValueType {
     /// Return true iff:
     ///     1. self and other have equal number of lanes
     ///     2. each lane in self has at least as many bits as a lane in other
-    pub fn _wider_or_equal(&self, rhs: &ValueType) -> bool {
+    pub fn is_wider_or_equal(&self, rhs: &ValueType) -> bool {
         (self.lane_count() == rhs.lane_count()) && (self.lane_bits() >= rhs.lane_bits())
     }
 

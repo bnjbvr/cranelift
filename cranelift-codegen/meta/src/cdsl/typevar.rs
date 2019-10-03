@@ -442,6 +442,36 @@ impl TypeSet {
         }
     }
 
+    pub fn new_wider_or_eq_than(value_type: ValueType) -> Self {
+        let builder = TypeSetBuilder::new();
+        let width = value_type.width() as RangeBound;
+        let builder = if let ValueType::Lane(lane_type) = value_type {
+            match lane_type {
+                LaneType::BoolType(_) => builder.bools(width..MAX_BITS),
+                LaneType::IntType(_) => builder.ints(width..MAX_BITS),
+                LaneType::FloatType(_) => builder.floats(width..MAX_BITS),
+            }
+        } else {
+            unimplemented!();
+        };
+        builder.build()
+    }
+
+    pub fn new_narrower_or_eq_than(value_type: ValueType) -> Self {
+        let builder = TypeSetBuilder::new();
+        let width = value_type.width() as RangeBound;
+        let builder = if let ValueType::Lane(lane_type) = value_type {
+            match lane_type {
+                LaneType::BoolType(_) => builder.bools(1..width),
+                LaneType::IntType(_) => builder.ints(8..width),
+                LaneType::FloatType(_) => builder.floats(32..width),
+            }
+        } else {
+            unimplemented!();
+        };
+        builder.build()
+    }
+
     /// Return the number of concrete types represented by this typeset.
     pub fn size(&self) -> usize {
         self.lanes.len()
@@ -575,7 +605,7 @@ impl TypeSet {
         copy
     }
 
-    fn concrete_types(&self) -> Vec<ValueType> {
+    pub fn concrete_types(&self) -> Vec<ValueType> {
         let mut ret = Vec::new();
         for &num_lanes in &self.lanes {
             for &bits in &self.ints {

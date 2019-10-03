@@ -52,61 +52,82 @@ impl Constraint {
         self.translate_with(|tv| type_env.get_equivalent(tv))
     }
 
-    fn is_trivial(&self) -> bool {
+    /// Check invariants for constraints that are not trivially true.
+    fn check_invariants(&self, vars_tv: &HashSet<TypeVar>) {
         match self {
             Constraint::WiderOrEq(lhs, rhs) => {
-                // Trivially true.
+                let ts1 = lhs.get_typeset();
+                let ts2 = rhs.get_typeset();
+                assert!(
+                    !ts1.is_narrower(&ts2),
+                    "WiderOrEq condition trivially false: {:?}. Is there a type contradiction in a legalization you introduced?",
+                    self
+                );
+                assert!(
+                    (&ts1.lanes & &ts2.lanes).len() > 0,
+                    "WiderOrEq condition trivially false: {:?}. Is there a type contradiction in a legalization you introduced?",
+                    self
+                );
+            }
+
+            Constraint::InTypeset(tv, _ts) => {
+                assert!(tv.base.is_none());
+                // This name is expected from gen_legalizer.
+                // TODO: It might be better to not tie names from this deep...
+                assert!(tv.name.starts_with("typeof_"));
+            }
+
+            Constraint::Eq(_lhs, _rhs) => {
+                // Nothing to check now.
+            }
+        }
+
+        // Make sure that all constraints apply only onto real variables.
+        match self {
+            Constraint::WiderOrEq(lhs, rhs) | Constraint::Eq(lhs, rhs) => {
+                if let Some(lhs_free_tv) = lhs.free_typevar() {
+                    assert!(vars_tv.contains(&lhs_free_tv));
+                }
+                if let Some(rhs_free_tv) = rhs.free_typevar() {
+                    assert!(vars_tv.contains(&rhs_free_tv));
+                }
+            }
+            Constraint::InTypeset(tv, _ts) => {
+                if let Some(free_tv) = tv.free_typevar() {
+                    assert!(vars_tv.contains(&free_tv));
+                }
+            }
+        }
+    }
+
+    /// Returns true only if the constraint is trivially true.
+    fn is_trivially_true(&self) -> bool {
+        match self {
+            Constraint::WiderOrEq(lhs, rhs) => {
                 if lhs == rhs {
                     return true;
                 }
-
-                let ts1 = lhs.get_typeset();
-                let ts2 = rhs.get_typeset();
-
-                // Trivially true.
-                if ts1.is_wider_or_equal(&ts2) {
+                if lhs.get_typeset().is_wider_or_equal(&rhs.get_typeset()) {
                     return true;
                 }
-
-                // Trivially false.
-                if ts1.is_narrower(&ts2) {
-                    return true;
+                match (lhs.singleton_type(), rhs.singleton_type()) {
+                    (Some(lhs), Some(rhs)) => lhs.is_wider_or_equal(&rhs),
+                    _ => false,
                 }
-
-                // Trivially false.
-                if (&ts1.lanes & &ts2.lanes).len() == 0 {
-                    return true;
-                }
-
-                self.is_concrete()
-            }
-            Constraint::Eq(lhs, rhs) => lhs == rhs || self.is_concrete(),
-            Constraint::InTypeset(_, _) => {
-                // The way InTypeset are made, they would always be trivial if we were applying the
-                // same logic as the Python code did, so ignore this.
-                self.is_concrete()
-            }
-        }
-    }
-
-    /// Returns true iff all the referenced type vars are singletons.
-    fn is_concrete(&self) -> bool {
-        match self {
-            Constraint::WiderOrEq(lhs, rhs) => {
-                lhs.singleton_type().is_some() && rhs.singleton_type().is_some()
             }
             Constraint::Eq(lhs, rhs) => {
-                lhs.singleton_type().is_some() && rhs.singleton_type().is_some()
+                if lhs == rhs {
+                    return true;
+                }
+                match (lhs.singleton_type(), rhs.singleton_type()) {
+                    (Some(lhs), Some(rhs)) => lhs == rhs,
+                    _ => false,
+                }
             }
-            Constraint::InTypeset(tv, _) => tv.singleton_type().is_some(),
-        }
-    }
-
-    fn typevar_args(&self) -> Vec<&TypeVar> {
-        match self {
-            Constraint::WiderOrEq(lhs, rhs) => vec![lhs, rhs],
-            Constraint::Eq(lhs, rhs) => vec![lhs, rhs],
-            Constraint::InTypeset(tv, _) => vec![tv],
+            Constraint::InTypeset(lhs, rhs) => match lhs.singleton_type() {
+                Some(lhs) => rhs.concrete_types().iter().any(|val_type| *val_type == lhs),
+                None => false,
+            },
         }
     }
 }
@@ -164,10 +185,15 @@ impl TypeEnvironment {
             return;
         }
 
-        // Check extra conditions for InTypeset constraints.
-        if let Constraint::InTypeset(tv, _) = &constraint {
-            assert!(tv.base.is_none());
-            assert!(tv.name.starts_with("typeof_"));
+        let mut constraint = constraint;
+        if let Constraint::WiderOrEq(lhs, rhs) = &constraint {
+            if let Some(singleton_type) = lhs.singleton_type() {
+                let narrower = TypeSet::new_narrower_or_eq_than(singleton_type);
+                constraint = Constraint::InTypeset(rhs.clone(), narrower);
+            } else if let Some(singleton_type) = rhs.singleton_type() {
+                let wider = TypeSet::new_wider_or_eq_than(singleton_type);
+                constraint = Constraint::InTypeset(lhs.clone(), wider);
+            }
         }
 
         self.constraints.push(constraint);
@@ -348,9 +374,7 @@ impl TypeEnvironment {
             if *tv != canon_tv {
                 new_equivalency_map.insert(tv.clone(), canon_tv.clone());
             }
-
             // Sanity check: the translated type map should only refer to real variables.
-            assert!(vars_tv.contains(tv));
             let canon_free_tv = canon_tv.free_typevar();
             assert!(canon_free_tv.is_none() || vars_tv.contains(&canon_free_tv.unwrap()));
         }
@@ -358,16 +382,10 @@ impl TypeEnvironment {
         let mut new_constraints: HashSet<Constraint> = HashSet::new();
         for constraint in &self.constraints {
             let constraint = constraint.translate_with_env(&self);
-            if constraint.is_trivial() || new_constraints.contains(&constraint) {
+            if constraint.is_trivially_true() || new_constraints.contains(&constraint) {
                 continue;
             }
-
-            // Sanity check: translated constraints should refer only to real variables.
-            for arg in constraint.typevar_args() {
-                let arg_free_tv = arg.free_typevar();
-                assert!(arg_free_tv.is_none() || vars_tv.contains(&arg_free_tv.unwrap()));
-            }
-
+            constraint.check_invariants(&vars_tv);
             new_constraints.insert(constraint);
         }
 
@@ -615,7 +633,7 @@ pub(crate) fn infer_transform(
     type_env = infer_definition(def_pool.get(src), var_pool, type_env, &mut last_type_index)
         .map_err(|err| format!("In src pattern: {}", err))?;
 
-    // Collect the type sets once after applying the source patterm; we'll compare the typesets
+    // Collect the type sets once after applying the source pattern; we'll compare the typesets
     // after we've also considered the destination pattern, and will emit supplementary InTypeset
     // checks if they don't match.
     let src_typesets = type_env
