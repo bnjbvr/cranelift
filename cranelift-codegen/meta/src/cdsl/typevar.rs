@@ -20,7 +20,6 @@ const MAX_BITVEC: u16 = MAX_BITS * MAX_LANES;
 /// This subset is specified by a set of flags that control the permitted base
 /// types and whether the type variable can assume scalar or vector types, or
 /// both.
-#[derive(Debug)]
 pub struct TypeVarContent {
     /// Short name of type variable used in instruction descriptions.
     pub name: String,
@@ -36,9 +35,15 @@ pub struct TypeVarContent {
     pub base: Option<TypeVarParent>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct TypeVar {
     content: Rc<RefCell<TypeVarContent>>,
+}
+
+impl fmt::Debug for TypeVar {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{} ({:?})", self.name, self.get_typeset())
+    }
 }
 
 impl TypeVar {
