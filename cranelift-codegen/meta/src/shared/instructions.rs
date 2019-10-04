@@ -1132,10 +1132,10 @@ pub(crate) fn define(
             "shuffle",
             r#"
         SIMD vector shuffle.
-        
+
         Shuffle two vectors using the given immediate bytes. For each of the 16 bytes of the
-        immediate, a value i of 0-15 selects the i-th element of the first vector and a value i of 
-        16-31 selects the (i-16)th element of the second vector. Immediate values outside of the 
+        immediate, a value i of 0-15 selects the i-th element of the first vector and a value i of
+        16-31 selects the (i-16)th element of the second vector. Immediate values outside of the
         0-31 range place a 0 in the resulting vector lane.
         "#,
         )
@@ -1573,7 +1573,7 @@ pub(crate) fn define(
 
         The lane index, ``Idx``, is an immediate value, not an SSA value. It
         must indicate a valid lane index for the type of ``x``. Note that the upper bits of ``a``
-        may or may not be zeroed depending on the ISA but the type system should prevent using 
+        may or may not be zeroed depending on the ISA but the type system should prevent using
         ``a`` as anything other than the extracted value.
         "#,
         )
@@ -1696,7 +1696,7 @@ pub(crate) fn define(
             r#"
         Add with unsigned saturation.
 
-        This is similar to `iadd` but the operands are interpreted as unsigned integers and their 
+        This is similar to `iadd` but the operands are interpreted as unsigned integers and their
         summed result, instead of wrapping, will be saturated to the highest unsigned integer for
         the controlling type (e.g. `0xFF` for i8).
         "#,
@@ -1711,10 +1711,10 @@ pub(crate) fn define(
             r#"
         Add with signed saturation.
 
-        This is similar to `iadd` but the operands are interpreted as signed integers and their 
-        summed result, instead of wrapping, will be saturated to the lowest or highest 
-        signed integer for the controlling type (e.g. `0x80` or `0x7F` for i8). For example, 
-        since an `iadd_ssat.i8` of `0x70` and `0x70` is greater than `0x7F`, the result will be 
+        This is similar to `iadd` but the operands are interpreted as signed integers and their
+        summed result, instead of wrapping, will be saturated to the lowest or highest
+        signed integer for the controlling type (e.g. `0x80` or `0x7F` for i8). For example,
+        since an `iadd_ssat.i8` of `0x70` and `0x70` is greater than `0x7F`, the result will be
         clamped to `0x7F`.
         "#,
         )
@@ -1742,7 +1742,7 @@ pub(crate) fn define(
             r#"
         Subtract with unsigned saturation.
 
-        This is similar to `isub` but the operands are interpreted as unsigned integers and their 
+        This is similar to `isub` but the operands are interpreted as unsigned integers and their
         difference, instead of wrapping, will be saturated to the lowest unsigned integer for
         the controlling type (e.g. `0x00` for i8).
         "#,
@@ -1757,8 +1757,8 @@ pub(crate) fn define(
             r#"
         Subtract with signed saturation.
 
-        This is similar to `isub` but the operands are interpreted as signed integers and their 
-        difference, instead of wrapping, will be saturated to the lowest or highest 
+        This is similar to `isub` but the operands are interpreted as signed integers and their
+        difference, instead of wrapping, will be saturated to the lowest or highest
         signed integer for the controlling type (e.g. `0x80` or `0x7F` for i8).
         "#,
         )
@@ -3026,9 +3026,9 @@ pub(crate) fn define(
         Inst::new(
             "scalar_to_vector",
             r#"
-    Scalar To Vector -- move a value out of a scalar register and into a vector register; the 
-    scalar will be moved to the lowest-order bits of the vector register. Note that this 
-    instruction is intended as a low-level legalization instruction and frontends should prefer 
+    Scalar To Vector -- move a value out of a scalar register and into a vector register; the
+    scalar will be moved to the lowest-order bits of the vector register. Note that this
+    instruction is intended as a low-level legalization instruction and frontends should prefer
     insertlane; on certain architectures, scalar_to_vector may zero the highest-order bits for some
     types (e.g. integers) but not for others (e.g. floats).
     "#,
