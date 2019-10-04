@@ -328,12 +328,13 @@ impl Var {
         self.type_var.clone()
     }
     pub fn set_typevar(&mut self, tv: TypeVar) {
-        self.is_original_type_var = if let Some(previous_tv) = &self.type_var {
-            *previous_tv == tv
-        } else {
-            false
-        };
+        if let Some(previous_tv) = &self.type_var {
+            if *previous_tv == tv {
+                return;
+            }
+        }
         self.type_var = Some(tv);
+        self.is_original_type_var = false;
     }
 
     /// Check if this variable has a free type variable. If not, the type of this variable is
