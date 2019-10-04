@@ -274,32 +274,28 @@ pub(crate) fn define(insts: &InstructionGroup, imm: &Immediates) -> TransformGro
 
     // Widen instructions with one input operand.
     for &op in &[bnot, popcnt] {
-        for &int_ty in &[I8, I16] {
-            widen.legalize(
-                def!(a = op.int_ty(b)),
-                vec![
-                    def!(x = uextend.I32(b)),
-                    def!(z = op.I32(x)),
-                    def!(a = ireduce.int_ty(z)),
-                ],
-            );
-        }
+        widen.legalize(
+            def!(a = op(b)),
+            vec![
+                def!(x = uextend.I32(b)),
+                def!(z = op.I32(x)),
+                def!(a = ireduce(z)),
+            ],
+        );
     }
 
     // Widen instructions with two input operands.
     let mut widen_two_arg = |signed: bool, op: &Instruction| {
-        for &int_ty in &[I8, I16] {
-            let sign_ext_op = if signed { sextend } else { uextend };
-            widen.legalize(
-                def!(a = op.int_ty(b, c)),
-                vec![
-                    def!(x = sign_ext_op.I32(b)),
-                    def!(y = sign_ext_op.I32(c)),
-                    def!(z = op.I32(x, y)),
-                    def!(a = ireduce.int_ty(z)),
-                ],
-            );
-        }
+        let sign_ext_op = if signed { sextend } else { uextend };
+        widen.legalize(
+            def!(a = op(b, c)),
+            vec![
+                def!(x = sign_ext_op.I32(b)),
+                def!(y = sign_ext_op.I32(c)),
+                def!(z = op.I32(x, y)),
+                def!(a = ireduce(z)),
+            ],
+        );
     };
 
     for bin_op in &[
@@ -313,17 +309,15 @@ pub(crate) fn define(insts: &InstructionGroup, imm: &Immediates) -> TransformGro
 
     // Widen instructions using immediate operands.
     let mut widen_imm = |signed: bool, op: &Instruction| {
-        for &int_ty in &[I8, I16] {
-            let sign_ext_op = if signed { sextend } else { uextend };
-            widen.legalize(
-                def!(a = op.int_ty(b, c)),
-                vec![
-                    def!(x = sign_ext_op.I32(b)),
-                    def!(z = op.I32(x, c)),
-                    def!(a = ireduce.int_ty(z)),
-                ],
-            );
-        }
+        let sign_ext_op = if signed { sextend } else { uextend };
+        widen.legalize(
+            def!(a = op(b, c)),
+            vec![
+                def!(x = sign_ext_op.I32(b)),
+                def!(z = op.I32(x, c)),
+                def!(a = ireduce(z)),
+            ],
+        );
     };
 
     for bin_op in &[
@@ -374,12 +368,10 @@ pub(crate) fn define(insts: &InstructionGroup, imm: &Immediates) -> TransformGro
     }
 
     // iconst
-    for &int_ty in &[I8, I16] {
-        widen.legalize(
-            def!(a = iconst.int_ty(b)),
-            vec![def!(c = iconst.I32(b)), def!(a = ireduce.int_ty(c))],
-        );
-    }
+    widen.legalize(
+        def!(a = iconst(b)),
+        vec![def!(c = iconst.I32(b)), def!(a = ireduce(c))],
+    );
 
     for &extend_op in &[uextend, sextend] {
         // The sign extension operators have two typevars: the result has one and controls the
@@ -423,75 +415,69 @@ pub(crate) fn define(insts: &InstructionGroup, imm: &Immediates) -> TransformGro
         ],
     );
 
-    for &int_ty in &[I8, I16] {
+    widen.legalize(
+        def!(br_table(x, y, z)),
+        vec![def!(b = uextend.I32(x)), def!(br_table(b, y, z))],
+    );
+
+    widen.legalize(
+        def!(a = bint(b)),
+        vec![def!(x = bint.I32(b)), def!(a = ireduce(x))],
+    );
+
+    for &op in &[ishl, ishl_imm, ushr, ushr_imm] {
         widen.legalize(
-            def!(br_table.int_ty(x, y, z)),
-            vec![def!(b = uextend.I32(x)), def!(br_table(b, y, z))],
+            def!(a = op(b, c)),
+            vec![
+                def!(x = uextend.I32(b)),
+                def!(z = op.I32(x, c)),
+                def!(a = ireduce(z)),
+            ],
         );
     }
 
-    for &int_ty in &[I8, I16] {
+    for &op in &[sshr, sshr_imm] {
         widen.legalize(
-            def!(a = bint.int_ty(b)),
-            vec![def!(x = bint.I32(b)), def!(a = ireduce.int_ty(x))],
+            def!(a = op(b, c)),
+            vec![
+                def!(x = sextend.I32(b)),
+                def!(z = op.I32(x, c)),
+                def!(a = ireduce(z)),
+            ],
         );
     }
 
-    for &int_ty in &[I8, I16] {
-        for &op in &[ishl, ishl_imm, ushr, ushr_imm] {
-            widen.legalize(
-                def!(a = op.int_ty(b, c)),
-                vec![
-                    def!(x = uextend.I32(b)),
-                    def!(z = op.I32(x, c)),
-                    def!(a = ireduce.int_ty(z)),
-                ],
-            );
-        }
+    for cc in &["eq", "ne", "ugt", "ult", "uge", "ule"] {
+        let w_cc = Literal::enumerator_for(&imm.intcc, cc);
+        widen.legalize(
+            def!(a = icmp_imm(w_cc, b, c)),
+            vec![def!(x = uextend.I32(b)), def!(a = icmp_imm(w_cc, x, c))],
+        );
+        widen.legalize(
+            def!(a = icmp(w_cc, b, c)),
+            vec![
+                def!(x = uextend.I32(b)),
+                def!(y = uextend.I32(c)),
+                def!(a = icmp.I32(w_cc, x, y)),
+            ],
+        );
+    }
 
-        for &op in &[sshr, sshr_imm] {
-            widen.legalize(
-                def!(a = op.int_ty(b, c)),
-                vec![
-                    def!(x = sextend.I32(b)),
-                    def!(z = op.I32(x, c)),
-                    def!(a = ireduce.int_ty(z)),
-                ],
-            );
-        }
+    for cc in &["sgt", "slt", "sge", "sle"] {
+        let w_cc = Literal::enumerator_for(&imm.intcc, cc);
+        widen.legalize(
+            def!(a = icmp_imm(w_cc, b, c)),
+            vec![def!(x = sextend.I32(b)), def!(a = icmp_imm(w_cc, x, c))],
+        );
 
-        for cc in &["eq", "ne", "ugt", "ult", "uge", "ule"] {
-            let w_cc = Literal::enumerator_for(&imm.intcc, cc);
-            widen.legalize(
-                def!(a = icmp_imm.int_ty(w_cc, b, c)),
-                vec![def!(x = uextend.I32(b)), def!(a = icmp_imm(w_cc, x, c))],
-            );
-            widen.legalize(
-                def!(a = icmp.int_ty(w_cc, b, c)),
-                vec![
-                    def!(x = uextend.I32(b)),
-                    def!(y = uextend.I32(c)),
-                    def!(a = icmp.I32(w_cc, x, y)),
-                ],
-            );
-        }
-
-        for cc in &["sgt", "slt", "sge", "sle"] {
-            let w_cc = Literal::enumerator_for(&imm.intcc, cc);
-            widen.legalize(
-                def!(a = icmp_imm.int_ty(w_cc, b, c)),
-                vec![def!(x = sextend.I32(b)), def!(a = icmp_imm(w_cc, x, c))],
-            );
-
-            widen.legalize(
-                def!(a = icmp.int_ty(w_cc, b, c)),
-                vec![
-                    def!(x = sextend.I32(b)),
-                    def!(y = sextend.I32(c)),
-                    def!(a = icmp(w_cc, x, y)),
-                ],
-            );
-        }
+        widen.legalize(
+            def!(a = icmp(w_cc, b, c)),
+            vec![
+                def!(x = sextend.I32(b)),
+                def!(y = sextend.I32(c)),
+                def!(a = icmp(w_cc, x, y)),
+            ],
+        );
     }
 
     // Expand integer operations with carry for RISC architectures that don't have
