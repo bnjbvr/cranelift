@@ -1,0 +1,753 @@
+set opt_level=speed
+set enable_pinned_reg=true
+target x86_64 haswell
+
+function u0:0(i32, i32, i32, i64 vmctx) -> i64 uext system_v {
+ebb0(v0: i32, v1: i32, v2: i32, v3: i64):
+    v6 = iconst.i32 0
+    jump ebb2
+
+ebb2:
+    v471 = iconst.i32 0
+    v472, v473 = x86_sdivmodx v1, v471, v6
+    jump ebb4(v472)
+
+ebb4(v7: i32):
+    v9 = iconst.i32 0
+    jump ebb5
+
+ebb5:
+    v479 = iconst.i32 0
+    v480, v481 = x86_sdivmodx v7, v479, v9
+    jump ebb7(v480)
+
+ebb7(v10: i32):
+    v338 = iconst.i32 0
+    v12 -> v338
+    v14 = iconst.i32 0
+    jump ebb8
+
+ebb8:
+    v488 = iconst.i32 0
+    v489, v490 = x86_sdivmodx v338, v488, v14
+    jump ebb10(v489)
+
+ebb10(v15: i32):
+    v344 = iconst.i32 0
+    v17 -> v344
+    v19 = iconst.i32 0
+    jump ebb11
+
+ebb11:
+    v497 = iconst.i32 0
+    v498, v499 = x86_sdivmodx v344, v497, v19
+    jump ebb13(v498)
+
+ebb13(v20: i32):
+    v22 = iconst.i32 0
+    jump ebb14
+
+ebb14:
+    v505 = iconst.i32 0
+    v506, v507 = x86_sdivmodx v20, v505, v22
+    jump ebb16(v506)
+
+ebb16(v23: i32):
+    v26 = iconst.i32 0
+    v351 = iconst.i32 0x4de9_bd37
+    v356 = iconst.i32 0
+    v29 -> v356
+    jump ebb17
+
+ebb17:
+    v515 = iconst.i32 0
+    v516, v517 = x86_sdivmodx v26, v515, v356
+    jump ebb19(v516)
+
+ebb19(v30: i32):
+    v31 = iconst.i32 -23
+    v33 = iconst.i32 0
+    jump ebb20
+
+ebb20:
+    v523 = iconst.i32 0
+    v524, v525 = x86_sdivmodx v31, v523, v33
+    jump ebb22(v524)
+
+ebb22(v34: i32):
+    v35 = iconst.i32 0
+    v36 = iconst.i32 -31
+    v357 = iconst.i32 0x4de9_bd37
+    v530, v358 = x86_smulx v36, v357
+    v359 = isub v358, v36
+    v360 = sshr_imm v359, 4
+    v361 = ushr_imm v360, 31
+    v362 = iadd v360, v361
+    v38 -> v362
+    jump ebb23
+
+ebb23:
+    v532 = sshr_imm.i32 v35, 31
+    v533, v534 = x86_sdivmodx v35, v532, v362
+    jump ebb25(v533)
+
+ebb25(v39: i32):
+    v44 = iconst.i32 0
+    jump ebb26
+
+ebb26:
+    v540 = iconst.i32 0
+    v541, v542 = x86_sdivmodx v34, v540, v44
+    jump ebb28(v541)
+
+ebb28(v45: i32):
+    v46 = iconst.i32 0
+    v47 = popcnt v46
+    v53 = iconst.i32 0
+    v547 = ifcmp_imm v53, -1
+    brif eq v547, ebb30
+    trap user0
+
+ebb30:
+    v552 = iconst.i32 0
+    jump ebb31(v552)
+
+ebb31(v54: i32):
+    v55 = iconst.i32 0
+    v57 = iconst.i32 0
+    jump ebb32
+
+ebb32:
+    v556 = iconst.i32 0
+    v557, v558 = x86_sdivmodx v55, v556, v57
+    jump ebb34(v557)
+
+ebb34(v58: i32):
+    v368 = iconst.i32 0
+    v63 -> v368
+    v65 = iconst.i32 0
+    jump ebb35
+
+ebb35:
+    v565 = iconst.i32 0
+    v566, v567 = x86_sdivmodx v368, v565, v65
+    jump ebb37(v566)
+
+ebb37(v66: i32):
+    v68 = iconst.i32 0
+    jump ebb38
+
+ebb38:
+    v573 = iconst.i32 0
+    v574, v575 = x86_sdivmodx v66, v573, v68
+    jump ebb40(v574)
+
+ebb40(v69: i32):
+    v72 = iconst.i32 0
+    v75 = iconst.i32 0
+    v581 = ifcmp_imm v75, -1
+    brif eq v581, ebb42
+    trap user0
+
+ebb42:
+    v586 = iconst.i32 0
+    jump ebb43(v586)
+
+ebb43(v76: i32):
+    jump ebb44
+
+ebb44:
+    v590 = iconst.i32 0
+    v591, v592 = x86_sdivmodx v72, v590, v76
+    jump ebb46(v591)
+
+ebb46(v77: i32):
+    v78 = iconst.i32 0
+    v80 = iconst.i32 0
+    jump ebb47
+
+ebb47:
+    v598 = iconst.i32 0
+    v599, v600 = x86_sdivmodx v78, v598, v80
+    jump ebb49(v599)
+
+ebb49(v81: i32):
+    v82 = iconst.i32 0
+    v380 = iconst.i32 0
+    v85 -> v380
+    jump ebb50
+
+ebb50:
+    v607 = iconst.i32 0
+    v608, v609 = x86_sdivmodx v82, v607, v380
+    jump ebb52(v608)
+
+ebb52(v86: i32):
+    v89 = iconst.i32 0
+    jump ebb53
+
+ebb53:
+    v615 = iconst.i32 0
+    v616, v617 = x86_sdivmodx v1, v615, v89
+    jump ebb55(v616)
+
+ebb55(v90: i32):
+    v92 = iconst.i32 0
+    jump ebb56
+
+ebb56:
+    v623 = iconst.i32 0
+    v624, v625 = x86_sdivmodx v90, v623, v92
+    jump ebb58(v624)
+
+ebb58(v93: i32):
+    v386 = iconst.i32 0
+    v95 -> v386
+    v97 = iconst.i32 0
+    jump ebb59
+
+ebb59:
+    v632 = iconst.i32 0
+    v633, v634 = x86_sdivmodx v386, v632, v97
+    jump ebb61(v633)
+
+ebb61(v98: i32):
+    v392 = iconst.i32 0
+    v100 -> v392
+    v102 = iconst.i32 0
+    jump ebb62
+
+ebb62:
+    v641 = iconst.i32 0
+    v642, v643 = x86_sdivmodx v392, v641, v102
+    jump ebb64(v642)
+
+ebb64(v103: i32):
+    v105 = iconst.i32 0
+    jump ebb65
+
+ebb65:
+    v649 = iconst.i32 0
+    v650, v651 = x86_sdivmodx v103, v649, v105
+    jump ebb67(v650)
+
+ebb67(v106: i32):
+    v109 = iconst.i32 0
+    v404 = iconst.i32 0
+    v112 -> v404
+    jump ebb68
+
+ebb68:
+    v659 = iconst.i32 0
+    v660, v661 = x86_sdivmodx v109, v659, v404
+    jump ebb70(v660)
+
+ebb70(v113: i32):
+    v114 = iconst.i32 0
+    v116 = iconst.i32 0
+    jump ebb71
+
+ebb71:
+    v667 = iconst.i32 0
+    v668, v669 = x86_sdivmodx v114, v667, v116
+    jump ebb73(v668)
+
+ebb73(v117: i32):
+    v118 = iconst.i32 0
+    v410 = iconst.i32 0
+    v121 -> v410
+    jump ebb74
+
+ebb74:
+    v676 = iconst.i32 0
+    v677, v678 = x86_sdivmodx v118, v676, v410
+    jump ebb76(v677)
+
+ebb76(v122: i32):
+    v127 = iconst.i32 0
+    jump ebb77
+
+ebb77:
+    v684 = iconst.i32 0
+    v685, v686 = x86_sdivmodx v117, v684, v127
+    jump ebb79(v685)
+
+ebb79(v128: i32):
+    v136 = iconst.i32 0
+    v691 = ifcmp_imm v136, -1
+    brif eq v691, ebb81
+    trap user0
+
+ebb81:
+    v696 = iconst.i32 0
+    jump ebb82(v696)
+
+ebb82(v137: i32):
+    v138 = iconst.i32 0
+    v140 = iconst.i32 0
+    jump ebb83
+
+ebb83:
+    v700 = iconst.i32 0
+    v701, v702 = x86_sdivmodx v138, v700, v140
+    jump ebb85(v701)
+
+ebb85(v141: i32):
+    v142 = iconst.i32 0
+    v143 = iconst.i32 0
+    v416 = iconst.i32 0
+    v146 -> v416
+    v148 = iconst.i32 0
+    jump ebb86
+
+ebb86:
+    v709 = iconst.i32 0
+    v710, v711 = x86_sdivmodx v416, v709, v148
+    jump ebb88(v710)
+
+ebb88(v149: i32):
+    v151 = iconst.i32 0
+    jump ebb89
+
+ebb89:
+    v717 = iconst.i32 0
+    v718, v719 = x86_sdivmodx v149, v717, v151
+    jump ebb91(v718)
+
+ebb91(v152: i32):
+    v422 = iconst.i32 0
+    v154 -> v422
+    v155 = iconst.i32 0
+    v158 = iconst.i32 0
+    v725 = ifcmp_imm v158, -1
+    brif eq v725, ebb93
+    trap user0
+
+ebb93:
+    v730 = iconst.i32 0
+    jump ebb94(v730)
+
+ebb94(v159: i32):
+    jump ebb95
+
+ebb95:
+    v734 = iconst.i32 0
+    v735, v736 = x86_sdivmodx v155, v734, v159
+    jump ebb97(v735)
+
+ebb97(v160: i32):
+    v161 = iconst.i32 0
+    v163 = iconst.i32 0
+    jump ebb98
+
+ebb98:
+    v742 = iconst.i32 0
+    v743, v744 = x86_sdivmodx v161, v742, v163
+    jump ebb100(v743)
+
+ebb100(v164: i32):
+    v165 = iconst.i32 0
+    v428 = iconst.i32 0
+    v168 -> v428
+    jump ebb101
+
+ebb101:
+    v751 = iconst.i32 0
+    v752, v753 = x86_sdivmodx v165, v751, v428
+    jump ebb103(v752)
+
+ebb103(v169: i32):
+    v170 = iconst.i32 -19
+    v174 = iconst.i32 0
+    jump ebb104
+
+ebb104:
+    v759 = iconst.i32 0
+    v760, v761 = x86_sdivmodx v164, v759, v174
+    jump ebb106(v760)
+
+ebb106(v175: i32):
+    v176 = iconst.i32 0
+    v177 = popcnt v176
+    v179 = iconst.i32 0
+    v180 = icmp_imm eq v179, 0
+    v183 = iconst.i32 0
+    v766 = ifcmp_imm v183, -1
+    brif eq v766, ebb108
+    jump ebb107
+
+ebb107:
+    v767 = iconst.i32 0
+    v768, v769 = x86_sdivmodx v177, v767, v183
+    trap user0
+
+ebb108:
+    v771 = iconst.i32 0
+    jump ebb109(v771)
+
+ebb109(v184: i32):
+    v185 = iconst.i32 0
+    v187 = iconst.i32 0
+    jump ebb110
+
+ebb110:
+    v775 = iconst.i32 0
+    v776, v777 = x86_sdivmodx v185, v775, v187
+    jump ebb112(v776)
+
+ebb112(v188: i32):
+    v189 = iconst.i32 0
+    v434 = iconst.i32 0
+    v192 -> v434
+    jump ebb113
+
+ebb113:
+    v784 = iconst.i32 0
+    v785, v786 = x86_sdivmodx v189, v784, v434
+    jump ebb115(v785)
+
+ebb115(v193: i32):
+    v791 = ifcmp_imm v193, -1
+    brif eq v791, ebb117
+    trap user0
+
+ebb117:
+    v796 = iconst.i32 0
+    jump ebb118(v796)
+
+ebb118(v194: i32):
+    v198 = iconst.i32 0
+    v200 = iconst.i32 0
+    jump ebb119
+
+ebb119:
+    v800 = iconst.i32 0
+    v801, v802 = x86_sdivmodx v198, v800, v200
+    jump ebb121(v801)
+
+ebb121(v201: i32):
+    v203 = iconst.i32 -63
+    v206 = iconst.i32 0
+    jump ebb122
+
+ebb122:
+    v808 = iconst.i32 0
+    v809, v810 = x86_sdivmodx v201, v808, v206
+    jump ebb124(v809)
+
+ebb124(v207: i32):
+    v815 = ifcmp_imm v207, -1
+    brif eq v815, ebb126
+    trap user0
+
+ebb126:
+    v820 = iconst.i32 0
+    jump ebb127(v820)
+
+ebb127(v208: i32):
+    v209 = iconst.i32 0
+    v823 = ifcmp_imm v209, -1
+    brif eq v823, ebb129
+    trap user0
+
+ebb129:
+    v828 = iconst.i32 0
+    jump ebb130(v828)
+
+ebb130(v210: i32):
+    v213 = iconst.i32 -23
+    v214 = iconst.i32 -19
+    v215 = icmp_imm eq v214, 0
+    v216 = bint.i32 v215
+    v217 = popcnt v216
+    v435 = iconst.i32 0x7df7_df7d
+    v831, v436 = x86_smulx v217, v435
+    v437 = isub v436, v217
+    v438 = sshr_imm v437, 5
+    v439 = ushr_imm v438, 31
+    v440 = iadd v438, v439
+    v219 -> v440
+    v220 = rotr v213, v440
+    v225 = iconst.i32 0
+    jump ebb131
+
+ebb131:
+    v833 = iconst.i32 0
+    v834, v835 = x86_sdivmodx v210, v833, v225
+    jump ebb133(v834)
+
+ebb133(v226: i32):
+    v229 = iconst.i32 0
+    jump ebb134
+
+ebb134:
+    v841 = iconst.i32 0
+    v842, v843 = x86_sdivmodx v194, v841, v229
+    jump ebb136(v842)
+
+ebb136(v230: i32):
+    jump ebb137
+
+ebb137:
+    v849 = iconst.i32 0
+    v850, v851 = x86_sdivmodx v184, v849, v230
+    jump ebb139(v850)
+
+ebb139(v231: i32):
+    v232 = iconst.i32 0
+    jump ebb140
+
+ebb140:
+    v857 = iconst.i32 0
+    v858, v859 = x86_sdivmodx v175, v857, v232
+    jump ebb142(v858)
+
+ebb142(v233: i32):
+    jump ebb143
+
+ebb143:
+    v865 = iconst.i32 0
+    v866, v867 = x86_sdivmodx v160, v865, v233
+    jump ebb145(v866)
+
+ebb145(v234: i32):
+    jump ebb146
+
+ebb146:
+    v873 = iconst.i32 0
+    v874, v875 = x86_sdivmodx v422, v873, v234
+    jump ebb148(v874)
+
+ebb148(v235: i32):
+    v236 = iconst.i32 0
+    v446 = iconst.i32 0
+    v239 -> v446
+    jump ebb149
+
+ebb149:
+    v882 = iconst.i32 0
+    v883, v884 = x86_sdivmodx v236, v882, v446
+    jump ebb151(v883)
+
+ebb151(v240: i32):
+    v241 = iconst.i32 0
+    v243 = iconst.i32 0
+    jump ebb152
+
+ebb152:
+    v890 = iconst.i32 0
+    v891, v892 = x86_sdivmodx v241, v890, v243
+    jump ebb154(v891)
+
+ebb154(v244: i32):
+    v249 = iconst.i32 0
+    jump ebb155
+
+ebb155:
+    v898 = iconst.i32 0
+    v899, v900 = x86_sdivmodx v244, v898, v249
+    jump ebb157(v899)
+
+ebb157(v250: i32):
+    jump ebb158
+
+ebb158:
+    v906 = iconst.i32 0
+    v907, v908 = x86_sdivmodx v240, v906, v250
+    jump ebb160(v907)
+
+ebb160(v251: i32):
+    v252 = iconst.i32 0
+    jump ebb161
+
+ebb161:
+    v914 = iconst.i32 0
+    v915, v916 = x86_sdivmodx v235, v914, v252
+    jump ebb163(v915)
+
+ebb163(v253: i32):
+    v255 = iconst.i32 0
+    v256 = iconst.i32 -23
+    v257 = iconst.i32 -19
+    v258 = icmp_imm eq v257, 0
+    v259 = bint.i32 v258
+    v260 = popcnt v259
+    v447 = iconst.i32 0x7df7_df7d
+    v921, v448 = x86_smulx v260, v447
+    v449 = isub v448, v260
+    v450 = sshr_imm v449, 5
+    v451 = ushr_imm v450, 31
+    v452 = iadd v450, v451
+    v262 -> v452
+    v263 = rotr v256, v452
+    v264 = popcnt v263
+    v265 = popcnt v264
+    v266 = popcnt v265
+    v267 = rotr v255, v266
+    v268 = popcnt v267
+    jump ebb164
+
+ebb164:
+    v923 = iconst.i32 0
+    v924, v925 = x86_sdivmodx v253, v923, v268
+    jump ebb166(v924)
+
+ebb166(v269: i32):
+    v272 = iconst.i32 0
+    jump ebb167
+
+ebb167:
+    v931 = iconst.i32 0
+    v932, v933 = x86_sdivmodx v143, v931, v272
+    jump ebb169(v932)
+
+ebb169(v273: i32):
+    jump ebb170
+
+ebb170:
+    v939 = iconst.i32 0
+    v940, v941 = x86_sdivmodx v142, v939, v273
+    jump ebb172(v940)
+
+ebb172(v274: i32):
+    v276 = iconst.i32 0
+    v277 = iconst.i32 -63
+    v278 = popcnt v277
+    jump ebb173
+
+ebb173:
+    v947 = iconst.i32 0
+    v948, v949 = x86_sdivmodx v276, v947, v278
+    jump ebb175(v948)
+
+ebb175(v279: i32):
+    v280 = iconst.i32 0
+    v281 = iconst.i32 0
+    v284 = iconst.i32 0
+    jump ebb176
+
+ebb176:
+    v955 = iconst.i32 0
+    v956, v957 = x86_sdivmodx v281, v955, v284
+    jump ebb178(v956)
+
+ebb178(v285: i32):
+    v286 = iconst.i32 0
+    v458 = iconst.i32 0
+    v289 -> v458
+    jump ebb179
+
+ebb179:
+    v964 = iconst.i32 0
+    v965, v966 = x86_sdivmodx v286, v964, v458
+    jump ebb181(v965)
+
+ebb181(v290: i32):
+    v294 = iconst.i32 0
+    jump ebb182
+
+ebb182:
+    v973 = iconst.i32 0
+    v974, v975 = x86_sdivmodx v290, v973, v294
+    jump ebb184(v974)
+
+ebb184(v295: i32):
+    jump ebb185
+
+ebb185:
+    v981 = iconst.i32 0
+    v982, v983 = x86_sdivmodx v285, v981, v295
+    jump ebb187(v982)
+
+ebb187(v296: i32):
+    jump ebb188
+
+ebb188:
+    v989 = iconst.i32 0
+    v990, v991 = x86_sdivmodx v280, v989, v296
+    jump ebb190(v990)
+
+ebb190(v297: i32):
+    jump ebb191
+
+ebb191:
+    v997 = iconst.i32 0
+    v998, v999 = x86_sdivmodx v279, v997, v297
+    jump ebb193(v998)
+
+ebb193(v298: i32):
+    v300 = iconst.i32 0
+    jump ebb194
+
+ebb194:
+    v1005 = iconst.i32 0
+    v1006, v1007 = x86_sdivmodx v1, v1005, v300
+    jump ebb196(v1006)
+
+ebb196(v301: i32):
+    v306 = iconst.i32 0
+    jump ebb197
+
+ebb197:
+    v1013 = iconst.i32 0
+    v1014, v1015 = x86_sdivmodx v1, v1013, v306
+    jump ebb199(v1014)
+
+ebb199(v307: i32):
+    v309 = iconst.i32 0
+    v310 = iconst.i32 0
+    v311 = iconst.i32 0
+    v312 = icmp_imm eq v311, 0
+    v313 = bint.i32 v312
+    v314 = rotr v310, v313
+    v315 = iconst.i32 -31
+    v464 = iconst.i32 0
+    v1020, v465 = x86_smulx v315, v464
+    v466 = isub v465, v315
+    v467 = sshr_imm v466, 4
+    v468 = iconst.i32 0
+    v469 = iadd v467, v468
+    v317 -> v469
+    jump ebb200
+
+ebb200:
+    v1022 = iconst.i32 0
+    v1023, v1024 = x86_sdivmodx v314, v1022, v469
+    jump ebb202(v1023)
+
+ebb202(v318: i32):
+    v319 = iconst.i32 0
+    v320 = iconst.i32 0
+    v321 = iconst.i32 -19
+    v322 = popcnt v321
+    jump ebb203
+
+ebb203:
+    v1030 = iconst.i32 0
+    v1031, v1032 = x86_sdivmodx v320, v1030, v322
+    jump ebb205(v1031)
+
+ebb205(v323: i32):
+    jump ebb206
+
+ebb206:
+    v1038 = iconst.i32 0
+    v1039, v1040 = x86_sdivmodx v319, v1038, v323
+    jump ebb208(v1039)
+
+ebb208(v324: i32):
+    jump ebb209
+
+ebb209:
+    v1046 = iconst.i32 0
+    v1047, v1048 = x86_sdivmodx v318, v1046, v324
+    jump ebb211(v1047)
+
+ebb211(v325: i32):
+    jump ebb212
+
+ebb212:
+    v1054 = sshr_imm.i32 v309, 31
+    v1055, v1056 = x86_sdivmodx v309, v1054, v325
+    trap user0
+}

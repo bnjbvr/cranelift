@@ -265,6 +265,7 @@ pub enum Move {
         from: RegUnit,
         to: RegUnit,
     },
+    #[allow(dead_code)] // likely a bug in rustc
     Spill {
         value: Value,
         rc: RegClass,
@@ -624,32 +625,36 @@ impl Solver {
     /// Add a variable that is live before the instruction, and possibly live through. Merge
     /// constraints if the value has already been added as a variable or fixed assignment.
     fn add_live_var(&mut self, value: Value, rc: RegClass, from: RegUnit, live_through: bool) {
-        // Check for existing entries for this value.
-        if self.regs_in.is_avail(rc, from) {
-            // There could be an existing variable entry.
-            if let Some(v) = self.vars.iter_mut().find(|v| v.value == value) {
-                // We have an existing variable entry for `value`. Combine the constraints.
-                if let Some(rc) = v.constraint.intersect(rc) {
-                    debug!("-> combining constraint with {} yields {}", v, rc);
-                    v.constraint = rc;
-                    return;
-                } else {
-                    // The spiller should have made sure the same value is not used with disjoint
-                    // constraints.
-                    panic!("Incompatible constraints: {} + {}", rc, v)
-                }
-            }
-
-            // No variable, then it must be a fixed reassignment.
-            if let Some(a) = self.assignments.get(value) {
-                debug!("-> already fixed assignment {}", a);
-                debug_assert!(rc.contains(a.to), "Incompatible constraints for {}", value);
+        // There could be an existing variable entry, because it wasn't part of the register class
+        // from a constraint, or if it was inserted to break a fixed input conflict.
+        if let Some(v) = self.vars.iter_mut().find(|v| v.value == value) {
+            // We have an existing variable entry for `value`. Combine the constraints.
+            if let Some(rc) = v.constraint.intersect(rc) {
+                debug!("-> combining constraint with {} yields {}", v, rc);
+                v.constraint = rc;
                 return;
+            } else {
+                // The spiller should have made sure the same value is not used with disjoint
+                // constraints.
+                panic!("Incompatible constraints: {} + {}", rc, v)
             }
-
-            debug!("{}", self);
-            panic!("Wrong from register for {}", value);
         }
+
+        // No variable, maybe it was a fixed reassignment.
+        if let Some(a) = self.assignments.get(value) {
+            debug!("-> already fixed assignment {}", a);
+            debug_assert!(rc.contains(a.to), "Incompatible constraints for {}", value);
+            return;
+        }
+
+        // If the register is available for inputs, it should be either because we already added it
+        // as a variable or a fixed reassignment, so it should have been already handled before.
+        debug_assert!(
+            !self.regs_in.is_avail(rc, from),
+            "{}\nInvalid add_live_var for {}",
+            self,
+            value
+        );
 
         let new_var = Variable::new_live(value, rc, from, live_through);
         debug!("-> new var: {}", new_var);
