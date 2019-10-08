@@ -714,22 +714,25 @@ impl<'a> Context<'a> {
             .expect("Current instruction not encoded")
             .ins;
 
-        for (op, &value) in constraints.iter().zip(self.cur.func.dfg.inst_args(inst)) {
-            match op.kind {
+        for (constraint, &value) in constraints.iter().zip(self.cur.func.dfg.inst_args(inst)) {
+            match constraint.kind {
                 ConstraintKind::Reg | ConstraintKind::Tied(_) => {
                     let cur_reg = self.divert.reg(value, &self.cur.func.locations);
 
                     // This is the opposite condition of `program_input_constraints()`. The pinned
                     // register mustn't be added back as a variable.
-                    if op.regclass.contains(cur_reg) && !self.is_pinned_reg(op.regclass, cur_reg) {
+                    if constraint.regclass.contains(cur_reg)
+                        && !self.is_pinned_reg(constraint.regclass, cur_reg)
+                    {
                         // This code runs after calling `solver.inputs_done()` so we must identify
-                        // the new variable as killed or live-through. Always special-case the
-                        // pinned register as a through variable.
+                        // the new variable as killed or live-through.
                         let layout = &self.cur.func.layout;
                         if self.liveness[value].killed_at(inst, layout.pp_ebb(inst), layout) {
-                            self.solver.add_killed_var(value, op.regclass, cur_reg);
+                            self.solver
+                                .add_killed_var(value, constraint.regclass, cur_reg);
                         } else {
-                            self.solver.add_through_var(value, op.regclass, cur_reg);
+                            self.solver
+                                .add_through_var(value, constraint.regclass, cur_reg);
                         }
                     }
                 }
