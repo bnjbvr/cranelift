@@ -59,7 +59,7 @@ use crate::cdsl::encodings::Encoding;
 use crate::cdsl::instructions::{Instruction, InstructionPredicate, InstructionPredicateNumber};
 use crate::cdsl::isa::TargetIsa;
 use crate::cdsl::recipes::{EncodingRecipe, OperandConstraint, Recipes, Register};
-use crate::cdsl::regs::IsaRegs;
+use crate::cdsl::regs::Registers;
 use crate::cdsl::settings::SettingPredicateNumber;
 use crate::cdsl::types::ValueType;
 use crate::cdsl::xform::TransformGroupIndex;
@@ -284,7 +284,7 @@ fn get_fixed_registers(operands_in: &Vec<OperandConstraint>) -> HashSet<Register
 /// Note "fixed_registers" must refer to the other kind of operands (i.e. if we're operating on
 /// inputs, fixed_registers must contain the fixed output registers).
 fn emit_operand_constraints(
-    registers: &IsaRegs,
+    registers: &Registers,
     recipe: &EncodingRecipe,
     constraints: &Vec<OperandConstraint>,
     field_name: &'static str,

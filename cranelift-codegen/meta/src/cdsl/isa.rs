@@ -4,7 +4,7 @@ use std::iter::FromIterator;
 use crate::cdsl::cpu_modes::CpuMode;
 use crate::cdsl::instructions::{InstructionGroup, InstructionPredicateMap};
 use crate::cdsl::recipes::Recipes;
-use crate::cdsl::regs::IsaRegs;
+use crate::cdsl::regs::Registers;
 use crate::cdsl::settings::SettingGroup;
 use crate::cdsl::xform::{TransformGroupIndex, TransformGroups};
 
@@ -12,7 +12,7 @@ pub(crate) struct TargetIsa {
     pub name: &'static str,
     pub instructions: InstructionGroup,
     pub settings: SettingGroup,
-    pub regs: IsaRegs,
+    pub regs: Registers,
     pub recipes: Recipes,
     pub cpu_modes: Vec<CpuMode>,
     pub encodings_predicates: InstructionPredicateMap,
@@ -28,7 +28,7 @@ impl TargetIsa {
         name: &'static str,
         instructions: InstructionGroup,
         settings: SettingGroup,
-        regs: IsaRegs,
+        regs: Registers,
         recipes: Recipes,
         cpu_modes: Vec<CpuMode>,
         encodings_predicates: InstructionPredicateMap,

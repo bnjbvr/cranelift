@@ -2,7 +2,7 @@ use crate::cdsl::cpu_modes::CpuMode;
 use crate::cdsl::instructions::{InstructionGroupBuilder, InstructionPredicateMap};
 use crate::cdsl::isa::TargetIsa;
 use crate::cdsl::recipes::Recipes;
-use crate::cdsl::regs::{IsaRegs, IsaRegsBuilder, RegBankBuilder, RegClassBuilder};
+use crate::cdsl::regs::{RegBankBuilder, RegClassBuilder, Registers, RegistersBuilder};
 use crate::cdsl::settings::{SettingGroup, SettingGroupBuilder};
 
 use crate::shared::Definitions as SharedDefinitions;
@@ -12,8 +12,8 @@ fn define_settings(_shared: &SettingGroup) -> SettingGroup {
     setting.build()
 }
 
-fn define_registers() -> IsaRegs {
-    let mut regs = IsaRegsBuilder::new();
+fn define_registers() -> Registers {
+    let mut regs = RegistersBuilder::new();
 
     // The `x31` regunit serves as the stack pointer / zero register depending on context. We
     // reserve it and don't model the difference.

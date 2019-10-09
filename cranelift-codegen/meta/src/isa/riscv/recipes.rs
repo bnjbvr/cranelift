@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::cdsl::formats::FormatRegistry;
 use crate::cdsl::instructions::InstructionPredicate;
 use crate::cdsl::recipes::{EncodingRecipeBuilder, EncodingRecipeNumber, Recipes, Stack};
-use crate::cdsl::regs::IsaRegs;
+use crate::cdsl::regs::Registers;
 use crate::shared::Definitions as SharedDefinitions;
 
 /// An helper to create recipes and use them when defining the RISCV encodings.
@@ -52,7 +52,7 @@ impl<'formats> RecipeGroup<'formats> {
 
 pub(crate) fn define<'formats>(
     shared_defs: &'formats SharedDefinitions,
-    regs: &IsaRegs,
+    regs: &Registers,
 ) -> RecipeGroup<'formats> {
     let formats = &shared_defs.format_registry;
 

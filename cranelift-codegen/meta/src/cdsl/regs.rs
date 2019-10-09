@@ -219,12 +219,12 @@ impl RegBankBuilder {
     }
 }
 
-pub struct IsaRegsBuilder {
+pub struct RegistersBuilder {
     pub banks: PrimaryMap<RegBankIndex, RegBank>,
     pub classes: PrimaryMap<RegClassIndex, RegClass>,
 }
 
-impl IsaRegsBuilder {
+impl RegistersBuilder {
     pub fn new() -> Self {
         Self {
             banks: PrimaryMap::new(),
@@ -315,7 +315,7 @@ impl IsaRegsBuilder {
     /// 2. There are no identical classes under different names.
     /// 3. Classes are sorted topologically such that all subclasses have a
     ///    higher index that the superclass.
-    pub fn build(self) -> IsaRegs {
+    pub fn build(self) -> Registers {
         for reg_bank in self.banks.values() {
             for i1 in reg_bank.classes.iter() {
                 for i2 in reg_bank.classes.iter() {
@@ -378,16 +378,16 @@ impl IsaRegsBuilder {
             .count();
         assert!(num_toplevel <= 4, "Too many top-level register classes");
 
-        IsaRegs::new(self.banks, self.classes)
+        Registers::new(self.banks, self.classes)
     }
 }
 
-pub struct IsaRegs {
+pub struct Registers {
     pub banks: PrimaryMap<RegBankIndex, RegBank>,
     pub classes: PrimaryMap<RegClassIndex, RegClass>,
 }
 
-impl IsaRegs {
+impl Registers {
     fn new(
         banks: PrimaryMap<RegBankIndex, RegBank>,
         classes: PrimaryMap<RegClassIndex, RegClass>,

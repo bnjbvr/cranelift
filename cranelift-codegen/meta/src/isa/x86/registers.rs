@@ -1,7 +1,7 @@
-use crate::cdsl::regs::{IsaRegs, IsaRegsBuilder, RegBankBuilder, RegClassBuilder};
+use crate::cdsl::regs::{RegBankBuilder, RegClassBuilder, Registers, RegistersBuilder};
 
-pub fn define() -> IsaRegs {
-    let mut regs = IsaRegsBuilder::new();
+pub fn define() -> Registers {
+    let mut regs = RegistersBuilder::new();
 
     let builder = RegBankBuilder::new("IntRegs", "r")
         .units(16)

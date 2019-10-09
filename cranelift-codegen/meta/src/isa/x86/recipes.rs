@@ -6,7 +6,7 @@ use crate::cdsl::instructions::InstructionPredicate;
 use crate::cdsl::recipes::{
     EncodingRecipe, EncodingRecipeBuilder, OperandConstraint, Register, Stack,
 };
-use crate::cdsl::regs::IsaRegs;
+use crate::cdsl::regs::Registers;
 use crate::cdsl::settings::SettingGroup;
 use crate::shared::Definitions as SharedDefinitions;
 
@@ -20,7 +20,7 @@ pub(crate) struct RecipeGroup<'builder> {
     formats: &'builder FormatRegistry,
 
     /// Memoized registers description, to pass it to builders later.
-    regs: &'builder IsaRegs,
+    regs: &'builder Registers,
 
     /// All the recipes explicitly created in this file. This is different from the final set of
     /// recipes, which is definitive only once encodings have generated new recipes on the fly.
@@ -31,7 +31,7 @@ pub(crate) struct RecipeGroup<'builder> {
 }
 
 impl<'builder> RecipeGroup<'builder> {
-    fn new(formats: &'builder FormatRegistry, regs: &'builder IsaRegs) -> Self {
+    fn new(formats: &'builder FormatRegistry, regs: &'builder Registers) -> Self {
         Self {
             formats,
             regs,
@@ -137,7 +137,7 @@ fn replace_put_op(code: Option<String>, prefix: &str) -> Option<String> {
 
 /// Replaces constraints to a REX-prefixed register class by the equivalent non-REX register class.
 fn replace_nonrex_constraints(
-    regs: &IsaRegs,
+    regs: &Registers,
     constraints: Vec<OperandConstraint>,
 ) -> Vec<OperandConstraint> {
     constraints
@@ -169,7 +169,7 @@ pub struct Template<'builder> {
     formats: &'builder FormatRegistry,
 
     /// Description of registers, used in the build() method.
-    regs: &'builder IsaRegs,
+    regs: &'builder Registers,
 
     /// The recipe template, which is to be specialized (by copy).
     recipe: EncodingRecipeBuilder,
@@ -195,7 +195,7 @@ impl<'builder> Template<'builder> {
     fn new(
         recipe: EncodingRecipeBuilder,
         formats: &'builder FormatRegistry,
-        regs: &'builder IsaRegs,
+        regs: &'builder Registers,
     ) -> Self {
         Self {
             formats,
@@ -330,7 +330,7 @@ fn valid_scale(format: &InstructionFormat) -> InstructionPredicate {
 pub(crate) fn define<'shared>(
     shared_defs: &'shared SharedDefinitions,
     settings: &'shared SettingGroup,
-    regs: &'shared IsaRegs,
+    regs: &'shared Registers,
 ) -> RecipeGroup<'shared> {
     // The set of floating point condition codes that are directly supported.
     // Other condition codes need to be reversed or expressed as two tests.
