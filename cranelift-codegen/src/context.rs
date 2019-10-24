@@ -35,6 +35,7 @@ use crate::value_label::{build_value_labels_ranges, ComparableSourceLoc, ValueLa
 use crate::verifier::{verify_context, verify_locations, VerifierErrors, VerifierResult};
 use alloc::vec::Vec;
 use log::debug;
+use std::env;
 
 /// Persistent data structures and compilation pipeline.
 pub struct Context {
@@ -335,8 +336,23 @@ impl Context {
 
     /// Run the register allocator.
     pub fn regalloc(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
+        let mechanism = match env::var("AA") {
+            Ok(ref s) if s == "y" => regalloc::Mechanism::AltAlloc,
+            Ok(ref s) if s == "n" => regalloc::Mechanism::Coloring,
+            _ => {
+                println!("Usage: Set AA=n to use the existing register allocator.");
+                println!("Usage: Set AA=y to use the alternative register allocator.");
+                println!("Usage: ('AA' == 'Alternative Register Allocator')");
+                println!("Usage: When AA=y, you can also set:");
+                println!("Usage:   AA_NOTBELOW=<n>");
+                println!("Usage:     do not show debug output for the first <n> functions");
+                println!("Usage:   AA_NOTABOVE=<n>");
+                println!("Usage:     do not show debug output after the first <n> functions");
+                panic!("You must set AA=n or =y.  Giving up.")
+            }
+        };
         self.regalloc
-            .run(isa, &mut self.func, &mut self.cfg, &mut self.domtree)
+            .run(isa, &mut self.func, &mut self.cfg, &mut self.domtree, mechanism)
     }
 
     /// Insert prologue and epilogues after computing the stack frame layout.

@@ -9,6 +9,7 @@ use crate::flowgraph::ControlFlowGraph;
 use crate::ir::Function;
 use crate::isa::TargetIsa;
 #[cfg(feature = "basic-blocks")]
+use crate::regalloc::alt_alloc::AAState;
 use crate::regalloc::branch_splitting;
 use crate::regalloc::coalescing::Coalescing;
 use crate::regalloc::coloring::Coloring;
@@ -35,6 +36,12 @@ pub struct Context {
     spilling: Spilling,
     reload: Reload,
     coloring: Coloring,
+    alt_alloc: AAState,
+}
+
+pub enum Mechanism {
+    AltAlloc,
+    Coloring,
 }
 
 impl Context {
@@ -52,6 +59,7 @@ impl Context {
             spilling: Spilling::new(),
             reload: Reload::new(),
             coloring: Coloring::new(),
+            alt_alloc: AAState::new(),
         }
     }
 
@@ -65,6 +73,7 @@ impl Context {
         self.spilling.clear();
         self.reload.clear();
         self.coloring.clear();
+        self.alt_alloc.clear();
     }
 
     /// Current values liveness state.
@@ -82,10 +91,51 @@ impl Context {
         func: &mut Function,
         cfg: &mut ControlFlowGraph,
         domtree: &mut DominatorTree,
+        mechanism: Mechanism,
     ) -> CodegenResult<()> {
         let _tt = timing::regalloc();
         debug_assert!(domtree.is_valid());
 
+        match mechanism {
+            Mechanism::AltAlloc => self.alt_alloc(isa, func, cfg, domtree),
+            Mechanism::Coloring => self.graph_coloring(isa, func, cfg, domtree),
+        }
+    }
+
+    fn alt_alloc(
+        &mut self,
+        isa: &dyn TargetIsa,
+        func: &mut Function,
+        cfg: &mut ControlFlowGraph,
+        domtree: &mut DominatorTree,
+    ) -> CodegenResult<()> {
+        let mut errors = VerifierErrors::default();
+
+        self.alt_alloc.run(isa, func, cfg, domtree, &mut self.topo);
+
+        if isa.flags().enable_verifier() {
+            let ok = verify_context(func, cfg, domtree, isa, &mut errors).is_ok();
+            if !ok {
+                return Err(errors.into());
+            }
+        }
+
+        // Even if we arrive here, (non-fatal) errors might have been reported, so we
+        // must make sure absolutely nothing is wrong
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.into())
+        }
+    }
+
+    fn graph_coloring(
+        &mut self,
+        isa: &dyn TargetIsa,
+        func: &mut Function,
+        cfg: &mut ControlFlowGraph,
+        domtree: &mut DominatorTree,
+    ) -> CodegenResult<()> {
         let mut errors = VerifierErrors::default();
 
         // `Liveness` and `Coloring` are self-clearing.
