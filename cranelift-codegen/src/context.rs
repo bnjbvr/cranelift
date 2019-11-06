@@ -340,15 +340,15 @@ impl Context {
             Ok(ref s) if s == "y" => regalloc::Mechanism::AltAlloc,
             Ok(ref s) if s == "n" => regalloc::Mechanism::Coloring,
             _ => {
-                println!("Usage: Set AA=n to use the existing register allocator.");
-                println!("Usage: Set AA=y to use the alternative register allocator.");
-                println!("Usage: ('AA' == 'Alternative Register Allocator')");
-                println!("Usage: When AA=y, you can also set:");
-                println!("Usage:   AA_NOTBELOW=<n>");
-                println!("Usage:     do not show debug output for the first <n> functions");
-                println!("Usage:   AA_NOTABOVE=<n>");
-                println!("Usage:     do not show debug output after the first <n> functions");
-                panic!("You must set AA=n or =y.  Giving up.")
+                //println!("Usage: Set AA=n to use the existing register allocator.");
+                //println!("Usage: Set AA=y to use the alternative register allocator.");
+                //println!("Usage: ('AA' == 'Alternative Register Allocator')");
+                //println!("Usage: When AA=y, you can also set:");
+                //println!("Usage:   AA_NOTBELOW=<n>");
+                //println!("Usage:     do not show debug output for the first <n> functions");
+                //println!("Usage:   AA_NOTABOVE=<n>");
+                //println!("Usage:     do not show debug output after the first <n> functions");
+                regalloc::Mechanism::AltAlloc
             }
         };
         self.regalloc

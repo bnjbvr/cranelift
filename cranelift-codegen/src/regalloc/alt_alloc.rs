@@ -78,24 +78,15 @@ impl Regs {
     fn new(registers: RegisterSet) -> Self {
         Self { registers }
     }
-
     fn take_specific(&mut self, rc: RegClass, r: RegUnit) {
         self.registers.take(rc, r);
     }
-
     fn take(&mut self, rc: RegClass) -> RegUnit {
         let mut i = self.registers.iter(rc);
-        match i.next() {
-            Some(r) => {
-                self.registers.take(rc, r);
-                r
-            }
-            None => {
-                panic!("No available register");
-            }
-        }
+        let reg = i.next().expect("no available register");
+        self.registers.take(rc, reg);
+        reg
     }
-
     fn free(&mut self, rc: RegClass, r: RegUnit) {
         self.registers.free(rc, r);
     }
