@@ -24,6 +24,7 @@ use crate::topo_order::TopoOrder;
 use crate::verifier::{
     verify_context, verify_cssa, verify_liveness, verify_locations, VerifierErrors,
 };
+use crate::regalloc::linear_scan::LsraState;
 
 /// Persistent memory allocations for register allocation.
 pub struct Context {
@@ -35,6 +36,12 @@ pub struct Context {
     spilling: Spilling,
     reload: Reload,
     coloring: Coloring,
+    lsra_state: LsraState,
+}
+
+pub enum Mechanism {
+    LinearScan,
+    Coloring,
 }
 
 impl Context {
@@ -52,6 +59,7 @@ impl Context {
             spilling: Spilling::new(),
             reload: Reload::new(),
             coloring: Coloring::new(),
+            lsra_state: LsraState::new(),
         }
     }
 
@@ -82,10 +90,51 @@ impl Context {
         func: &mut Function,
         cfg: &mut ControlFlowGraph,
         domtree: &mut DominatorTree,
+        mechanism: Mechanism,
     ) -> CodegenResult<()> {
         let _tt = timing::regalloc();
         debug_assert!(domtree.is_valid());
+        match mechanism {
+            Mechanism::Coloring => self.graph_coloring(isa, func, cfg, domtree),
+            Mechanism::LinearScan => self.linear_scan(isa, func, cfg, domtree),
+        }
+    }
 
+    fn linear_scan(
+        &mut self,
+        isa: &dyn TargetIsa,
+        func: &mut Function,
+        cfg: &mut ControlFlowGraph,
+        domtree: &mut DominatorTree,
+    ) -> CodegenResult<()> {
+        let mut errors = VerifierErrors::default();
+
+        self.lsra_state.clear();
+        self.lsra_state.run(isa, func, cfg, domtree, &mut self.topo);
+
+        if isa.flags().enable_verifier() {
+            let ok = verify_context(func, cfg, domtree, isa, &mut errors).is_ok();
+            if !ok {
+                return Err(errors.into());
+            }
+        }
+
+        // Even if we arrive here, (non-fatal) errors might have been reported, so we must make
+        // sure absolutely nothing is wrong
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.into())
+        }
+    }
+
+    fn graph_coloring(
+        &mut self,
+        isa: &dyn TargetIsa,
+        func: &mut Function,
+        cfg: &mut ControlFlowGraph,
+        domtree: &mut DominatorTree,
+    ) -> CodegenResult<()> {
         let mut errors = VerifierErrors::default();
 
         // `Liveness` and `Coloring` are self-clearing.

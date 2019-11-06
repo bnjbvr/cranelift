@@ -22,12 +22,26 @@ use alloc::vec::Vec;
 use core::cmp::Ordering;
 use core::fmt;
 use core::slice;
+use core::u32;
 use smallvec::SmallVec;
 
 /// A virtual register reference.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct VirtReg(u32);
 entity_impl!(VirtReg, "vreg");
+
+impl VirtReg {
+    /// Create a new virtual register reference from its number.
+    ///
+    /// This method is for use by the parser.
+    pub fn with_number(n: u32) -> Option<Self> {
+        if n < u32::MAX {
+            Some(Self(n))
+        } else {
+            None
+        }
+    }
+}
 
 type ValueList = EntityList<Value>;
 

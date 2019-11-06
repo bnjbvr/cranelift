@@ -35,6 +35,7 @@ use crate::value_label::{build_value_labels_ranges, ComparableSourceLoc, ValueLa
 use crate::verifier::{verify_context, verify_locations, VerifierErrors, VerifierResult};
 use alloc::vec::Vec;
 use log::debug;
+use std::env;
 
 /// Persistent data structures and compilation pipeline.
 pub struct Context {
@@ -337,8 +338,20 @@ impl Context {
 
     /// Run the register allocator.
     pub fn regalloc(&mut self, isa: &dyn TargetIsa) -> CodegenResult<()> {
-        self.regalloc
-            .run(isa, &mut self.func, &mut self.cfg, &mut self.domtree)
+        let mechanism = match env::var("RA") {
+            Ok(ref s) if s == "hacks" => regalloc::Mechanism::Coloring,
+            Ok(ref s) if s == "lsra" => regalloc::Mechanism::LinearScan,
+            _ => {
+                panic!("use RA={alt, hacks, lsra} to choose among a regalloc scheme");
+            }
+        };
+        self.regalloc.run(
+            isa,
+            &mut self.func,
+            &mut self.cfg,
+            &mut self.domtree,
+            mechanism,
+        )
     }
 
     /// Insert prologue and epilogues after computing the stack frame layout.

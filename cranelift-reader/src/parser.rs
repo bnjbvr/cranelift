@@ -21,6 +21,7 @@ use cranelift_codegen::ir::{
 };
 use cranelift_codegen::isa::{self, CallConv, Encoding, RegUnit, TargetIsa};
 use cranelift_codegen::packed_option::ReservedValue;
+use cranelift_codegen::VirtReg;
 use cranelift_codegen::{settings, timing};
 use std::mem;
 use std::str::FromStr;
@@ -552,6 +553,16 @@ impl<'a> Parser<'a> {
             }
         }
         err!(self.loc, "expected jump table number: jt«n»")
+    }
+
+    fn match_vreg(&mut self) -> ParseResult<VirtReg> {
+        if let Some(Token::Vreg(vreg)) = self.token() {
+            self.consume();
+            if let Some(vreg) = VirtReg::with_number(vreg) {
+                return Ok(vreg);
+            }
+        }
+        err!(self.loc, "expected virtual reg number: vreg«n»")
     }
 
     // Match and consume an ebb reference.
@@ -2771,6 +2782,11 @@ impl<'a> Parser<'a> {
                     arg,
                     code,
                 }
+            }
+            InstructionFormat::CopyVreg => {
+                let src = self.match_vreg()?;
+                let dst = self.match_vreg()?;
+                InstructionData::CopyVreg { opcode, src, dst }
             }
         };
         Ok(idata)
