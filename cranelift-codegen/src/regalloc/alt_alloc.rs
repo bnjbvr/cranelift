@@ -2,8 +2,8 @@
 //! Hence I conclude the earth is not flat.
 
 use std::env;
-use std::vec::Vec;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::vec::Vec;
 
 use crate::cursor::{Cursor, EncCursor};
 use crate::dominator_tree::DominatorTree;
@@ -16,8 +16,12 @@ use crate::isa::{ConstraintKind, EncInfo, TargetIsa};
 use crate::topo_order::TopoOrder;
 
 use crate::isa::registers::{RegClass, RegUnit};
-use crate::regalloc::register_set::RegisterSet;
 use crate::regalloc::branch_splitting;
+use crate::regalloc::register_set::RegisterSet;
+
+use crate::entity::PrimaryMap;
+use crate::entity::{EntityList, ListPool};
+use crate::regalloc::virtregs::VirtReg;
 
 // ========================================================================================== //
 //                                                                                            //
@@ -170,9 +174,7 @@ impl<'a> Context<'a> {
                     debug_assert!(hit.4);
                     (hit.2, hit.3)
                 }
-                ConstraintKind::Reg => {
-                    (constraint.regclass, regs.take(constraint.regclass))
-                }
+                ConstraintKind::Reg => (constraint.regclass, regs.take(constraint.regclass)),
                 ConstraintKind::Stack => unreachable!(),
             };
             reg_results.push((k, *result, rc, reg));
@@ -295,10 +297,12 @@ impl<'a> Context<'a> {
             .dfg
             .ebb_params(target)
             .iter()
-            .map(|i| if let ValueLoc::Stack(ss) = self.cur.func.locations[*i] {
-                ss
-            } else {
-                unreachable!()
+            .map(|i| {
+                if let ValueLoc::Stack(ss) = self.cur.func.locations[*i] {
+                    ss
+                } else {
+                    unreachable!()
+                }
             })
             .collect();
 
@@ -317,7 +321,8 @@ impl<'a> Context<'a> {
         for (k, (arg, target_arg)) in arginfo {
             let arg_loc = self.cur.func.locations[arg];
             let target_arg_loc = self.cur.func.locations[target_arg];
-            if let (ValueLoc::Stack(arg_ss), ValueLoc::Stack(target_ss)) = (arg_loc, target_arg_loc) {
+            if let (ValueLoc::Stack(arg_ss), ValueLoc::Stack(target_ss)) = (arg_loc, target_arg_loc)
+            {
                 if arg_ss == target_ss {
                     continue;
                 }
@@ -439,15 +444,13 @@ impl<'a> Context<'a> {
         // Branch edges that pass parameters must have been split.
         debug_assert!({
             match self.cur.func.dfg[inst] {
-                InstructionData::Branch { destination, .. } |
-                InstructionData::BranchIcmp { destination, .. } |
-                InstructionData::BranchInt { destination, .. } |
-                InstructionData::BranchFloat { destination, .. } => {
+                InstructionData::Branch { destination, .. }
+                | InstructionData::BranchIcmp { destination, .. }
+                | InstructionData::BranchInt { destination, .. }
+                | InstructionData::BranchFloat { destination, .. } => {
                     self.cur.func.dfg.ebb_params(destination).len() == 0
                 }
-                _ => {
-                    panic!("Unexpected instruction in classify_branch")
-                }
+                _ => panic!("Unexpected instruction in classify_branch"),
             }
         });
 
@@ -549,26 +552,21 @@ impl<'a> Context<'a> {
             Opcode::Copy => {
                 self.visit_copy(inst);
             }
-            Opcode::BrTable |
-            Opcode::Fallthrough |
-            Opcode::FallthroughReturn |
-            Opcode::IndirectJumpTableBr |
-            Opcode::Jump |
-            Opcode::Return |
-            Opcode::Trap => {
+            Opcode::BrTable
+            | Opcode::Fallthrough
+            | Opcode::FallthroughReturn
+            | Opcode::IndirectJumpTableBr
+            | Opcode::Jump
+            | Opcode::Return
+            | Opcode::Trap => {
                 debug_assert!(opcode.is_terminator());
                 self.visit_terminator(inst, regs, opcode);
             }
-            Opcode::BrIcmp |
-            Opcode::Brff |
-            Opcode::Brif |
-            Opcode::Brnz |
-            Opcode::Brz => {
+            Opcode::BrIcmp | Opcode::Brff | Opcode::Brif | Opcode::Brnz | Opcode::Brz => {
                 debug_assert!(opcode.is_branch());
                 self.visit_branch(inst, regs);
             }
-            Opcode::Call |
-            Opcode::CallIndirect => {
+            Opcode::Call | Opcode::CallIndirect => {
                 debug_assert!(opcode.is_call());
                 self.visit_call(inst, regs, opcode);
             }
@@ -587,9 +585,7 @@ impl<'a> Context<'a> {
                         && opcode != Opcode::CopySpecial
                 );
                 // Make sure we covered all cases above.
-                debug_assert!(!opcode.is_terminator()
-                              && !opcode.is_branch()
-                              && !opcode.is_call());
+                debug_assert!(!opcode.is_terminator() && !opcode.is_branch() && !opcode.is_call());
                 self.visit_plain_inst(inst, regs);
             }
         }
@@ -695,23 +691,23 @@ impl<'a> Context<'a> {
 impl<'a> Context<'a> {
     fn show(&self, limits: (Option<usize>, Option<usize>), run_number: usize, what: &str) {
         // Figure out if we actually want to print this function.
-        let in_range_lo =
-            match limits.0 {
-                None => true,
-                Some(not_below) => run_number >= not_below
-            };
-        let in_range_hi =
-            match limits.1 {
-                None => true,
-                Some(not_above) => run_number <= not_above
-            };
+        let in_range_lo = match limits.0 {
+            None => true,
+            Some(not_below) => run_number >= not_below,
+        };
+        let in_range_hi = match limits.1 {
+            None => true,
+            Some(not_above) => run_number <= not_above,
+        };
         if !in_range_lo || !in_range_hi {
             return;
         }
 
         // Ok .. print it.
-        println!("==== Fn {}: {} ========================================================",
-                 run_number, what);
+        println!(
+            "==== Fn {}: {} ========================================================",
+            run_number, what
+        );
         println!("");
         println!("{}", self.cur.func.display(self.cur.isa));
     }
@@ -727,8 +723,7 @@ impl<'a> Context<'a> {
 // Alt allocator: running state
 
 // The alt allocator's state
-pub struct AAState {
-}
+pub struct AAState {}
 
 // =============================================================================
 // Alt allocator: external interface
@@ -757,17 +752,38 @@ static RUNS_SO_FAR: AtomicUsize = AtomicUsize::new(0);
 
 // Get display limits, if any, from AA_NOTBELOW and AA_NOTABOVE
 fn get_limits() -> (Option<usize>, Option<usize>) {
-    let limit_notbelow =
-        match env::var("AA_NOTBELOW") {
-            Ok(ref s) => Some(s.parse::<usize>().expect("Usage: set AA_NOTBELOW=<integer>")),
-            _ => None
-        };
-    let limit_notabove =
-        match env::var("AA_NOTABOVE") {
-            Ok(ref s) => Some(s.parse::<usize>().expect("Usage: set AA_NOTABOVE=<integer>")),
-            _ => None
-        };
+    let limit_notbelow = match env::var("AA_NOTBELOW") {
+        Ok(ref s) => Some(
+            s.parse::<usize>()
+                .expect("Usage: set AA_NOTBELOW=<integer>"),
+        ),
+        _ => None,
+    };
+    let limit_notabove = match env::var("AA_NOTABOVE") {
+        Ok(ref s) => Some(
+            s.parse::<usize>()
+                .expect("Usage: set AA_NOTABOVE=<integer>"),
+        ),
+        _ => None,
+    };
     (limit_notbelow, limit_notabove)
+}
+
+type ValueList = EntityList<Value>;
+
+struct VirtualRegData {}
+
+struct VirtualRegs {
+    /// The primary table of virtual registers.
+    vregs: PrimaryMap<VirtReg, ValueList>,
+}
+
+impl VirtualRegs {
+    fn new() -> Self {
+        Self {
+            vregs: PrimaryMap::new(),
+        }
+    }
 }
 
 impl AAState {
@@ -777,8 +793,7 @@ impl AAState {
     }
 
     /// Clear the state of the allocator.
-    pub fn clear(&mut self) {
-    }
+    pub fn clear(&mut self) {}
 
     /// Run register allocation.
     pub fn run(

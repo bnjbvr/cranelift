@@ -351,8 +351,13 @@ impl Context {
                 regalloc::Mechanism::AltAlloc
             }
         };
-        self.regalloc
-            .run(isa, &mut self.func, &mut self.cfg, &mut self.domtree, mechanism)
+        self.regalloc.run(
+            isa,
+            &mut self.func,
+            &mut self.cfg,
+            &mut self.domtree,
+            mechanism,
+        )
     }
 
     /// Insert prologue and epilogues after computing the stack frame layout.
