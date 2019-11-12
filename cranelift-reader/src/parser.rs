@@ -6,6 +6,7 @@ use crate::lexer::{LexError, Lexer, LocatedError, LocatedToken, Token};
 use crate::sourcemap::SourceMap;
 use crate::testcommand::TestCommand;
 use crate::testfile::{Comment, Details, Feature, TestFile};
+use cranelift_codegen::VirtReg;
 use cranelift_codegen::entity::EntityRef;
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::entities::AnyEntity;
@@ -552,6 +553,16 @@ impl<'a> Parser<'a> {
             }
         }
         err!(self.loc, "expected jump table number: jt«n»")
+    }
+
+    fn match_vreg(&mut self) -> ParseResult<VirtReg> {
+        if let Some(Token::Vreg(vreg)) = self.token() {
+            self.consume();
+            if let Some(vreg) = VirtReg::with_number(vreg) {
+                return Ok(vreg);
+            }
+        }
+        err!(self.loc, "expected virtual reg number: vreg«n»")
     }
 
     // Match and consume an ebb reference.
@@ -2770,6 +2781,13 @@ impl<'a> Parser<'a> {
                     cond,
                     arg,
                     code,
+                }
+            }
+            InstructionFormat::CopyVreg => {
+                let src = self.match_vreg()?;
+                let dst = self.match_vreg()?;
+                InstructionData::CopyVreg {
+                    opcode, src, dst
                 }
             }
         };

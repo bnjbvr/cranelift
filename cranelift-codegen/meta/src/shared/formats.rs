@@ -17,6 +17,7 @@ pub(crate) struct Formats {
     pub(crate) cond_trap: Rc<InstructionFormat>,
     pub(crate) copy_special: Rc<InstructionFormat>,
     pub(crate) copy_to_ssa: Rc<InstructionFormat>,
+    pub(crate) copy_vreg: Rc<InstructionFormat>,
     pub(crate) extract_lane: Rc<InstructionFormat>,
     pub(crate) float_compare: Rc<InstructionFormat>,
     pub(crate) float_cond: Rc<InstructionFormat>,
@@ -269,6 +270,11 @@ impl Formats {
 
             copy_to_ssa: Builder::new("CopyToSsa")
                 .imm_with_name("src", &imm.regunit)
+                .build(),
+
+            copy_vreg: Builder::new("CopyVreg")
+                .imm_with_name("src", &entities.virt_reg)
+                .imm_with_name("dst", &entities.virt_reg)
                 .build(),
 
             reg_spill: Builder::new("RegSpill")

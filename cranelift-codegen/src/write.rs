@@ -711,6 +711,7 @@ pub fn write_operands(
         FloatCondTrap {
             cond, arg, code, ..
         } => write!(w, " {} {}, {}", cond, arg, code),
+        CopyVreg { src, dst, .. } => write!(w, " {} -> {}", src, dst),
     }
 }
 

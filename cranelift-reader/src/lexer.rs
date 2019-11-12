@@ -42,6 +42,7 @@ pub enum Token<'a> {
     FuncRef(u32),         // fn2
     SigRef(u32),          // sig2
     UserRef(u32),         // u345
+    Vreg(u32),            // vreg42
     Name(&'a str),        // %9arbitrary_alphanum, %x3, %0, %function ...
     String(&'a str),      // "abritrary quoted string with no escape" ...
     HexSequence(&'a str), // #89AF
@@ -348,6 +349,7 @@ impl<'a> Lexer<'a> {
             "fn" => Some(Token::FuncRef(number)),
             "sig" => Some(Token::SigRef(number)),
             "u" => Some(Token::UserRef(number)),
+            "vreg" => Some(Token::Vreg(number)),
             _ => None,
         }
     }

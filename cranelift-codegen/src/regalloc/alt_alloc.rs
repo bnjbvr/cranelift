@@ -723,7 +723,9 @@ impl<'a> Context<'a> {
 // Alt allocator: running state
 
 // The alt allocator's state
-pub struct AAState {}
+pub struct AAState {
+    vregs_form: VirtualRegs,
+}
 
 // =============================================================================
 // Alt allocator: external interface
@@ -771,8 +773,6 @@ fn get_limits() -> (Option<usize>, Option<usize>) {
 
 type ValueList = EntityList<Value>;
 
-struct VirtualRegData {}
-
 struct VirtualRegs {
     /// The primary table of virtual registers.
     vregs: PrimaryMap<VirtReg, ValueList>,
@@ -784,16 +784,32 @@ impl VirtualRegs {
             vregs: PrimaryMap::new(),
         }
     }
+    fn clear(&mut self) {
+        self.vregs.clear();
+    }
+}
+
+/// Make phis explicit: replace each block-terminating jump with params, with a parallel assignment
+/// followed by the same jump without params.
+///
+/// Initially, generate a naive sequentialisation of the parallel assignment just by copying
+/// through a fresh set of vregs.
+fn make_phis_explicit() {
+    unreachable!();
 }
 
 impl AAState {
     /// Create a new alt allocator state.
     pub fn new() -> Self {
-        Self {}
+        Self {
+            vregs_form: VirtualRegs::new(),
+        }
     }
 
     /// Clear the state of the allocator.
-    pub fn clear(&mut self) {}
+    pub fn clear(&mut self) {
+        self.vregs_form.clear();
+    }
 
     /// Run register allocation.
     pub fn run(
@@ -819,6 +835,11 @@ impl AAState {
 
         branch_splitting::run(isa, ctx.cur.func, cfg, ctx.domtree, ctx.topo);
         ctx.show(limits, run_number, "After branch splitting");
+
+        make_phis_explicit();
+        ctx.show(limits, run_number, "After making phis explicit");
+
+        unimplemented!();
 
         let r = ctx.run_minimal_allocator();
         ctx.show(limits, run_number, "Completed");

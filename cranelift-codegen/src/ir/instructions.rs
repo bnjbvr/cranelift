@@ -15,6 +15,7 @@ use crate::ir;
 use crate::ir::types;
 use crate::ir::{Ebb, FuncRef, JumpTable, SigRef, Type, Value};
 use crate::isa;
+use crate::regalloc;
 
 use crate::bitset::BitSet;
 use crate::entity;
