@@ -5,6 +5,8 @@ use std::env;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::vec::Vec;
 
+use log::info;
+
 use crate::cursor::{Cursor, EncCursor};
 use crate::dominator_tree::DominatorTree;
 use crate::flowgraph::ControlFlowGraph;
@@ -19,8 +21,7 @@ use crate::isa::registers::{RegClass, RegUnit};
 use crate::regalloc::branch_splitting;
 use crate::regalloc::register_set::RegisterSet;
 
-use crate::entity::PrimaryMap;
-use crate::entity::{EntityList, ListPool};
+use crate::entity::{EntityList, ListPool, PrimaryMap, SecondaryMap};
 use crate::regalloc::virtregs::VirtReg;
 
 // ========================================================================================== //
@@ -724,7 +725,7 @@ impl<'a> Context<'a> {
 
 // The alt allocator's state
 pub struct AAState {
-    vregs_form: VirtualRegs,
+    vregs: VirtualRegs,
 }
 
 // =============================================================================
@@ -776,16 +777,27 @@ type ValueList = EntityList<Value>;
 struct VirtualRegs {
     /// The primary table of virtual registers.
     vregs: PrimaryMap<VirtReg, ValueList>,
+    value_vreg: SecondaryMap<Value, Option<VirtReg>>,
+    value_pool: ListPool<Value>,
+
+    ebb_params_vreg: SecondaryMap<Ebb, Option<Vec<VirtReg>>>,
 }
 
 impl VirtualRegs {
     fn new() -> Self {
         Self {
             vregs: PrimaryMap::new(),
+            value_vreg: SecondaryMap::new(),
+            value_pool: ListPool::new(),
+            ebb_params_vreg: SecondaryMap::new(),
         }
     }
+
     fn clear(&mut self) {
         self.vregs.clear();
+        self.value_vreg.clear();
+        self.value_pool.clear();
+        self.ebb_params_vreg.clear();
     }
 }
 
@@ -794,21 +806,179 @@ impl VirtualRegs {
 ///
 /// Initially, generate a naive sequentialisation of the parallel assignment just by copying
 /// through a fresh set of vregs.
-fn make_phis_explicit() {
-    unreachable!();
+impl<'a> Context<'a> {
+    fn make_phis_explicit(&mut self) {
+        self.topo.reset(self.cur.func.layout.ebbs());
+
+        let vregs = &mut self.state.vregs;
+
+        while let Some(ebb) = self.topo.next(&self.cur.func.layout, self.domtree) {
+            // Step 1: assign virtual reg to the ebb parameters.
+            if let Some(ebb_vregs) = &vregs.ebb_params_vreg[ebb] {
+                // If it's already been visited, all the vregs must have been preallocated.
+                debug_assert!(ebb_vregs.len() == self.cur.func.dfg.num_ebb_params(ebb));
+            } else {
+                // This block hasn't ever been visited, allocate vregs.
+                let mut ebb_vregs = Vec::with_capacity(self.cur.func.dfg.num_ebb_params(ebb));
+                for &ebb_param in self.cur.func.dfg.ebb_params(ebb) {
+                    let vreg = vregs.vregs.push(ValueList::new());
+                    vregs.vregs[vreg].push(ebb_param, &mut vregs.value_pool);
+                    vregs.value_vreg[ebb_param] = Some(vreg);
+                    info!("{:?}: param {} has vreg {}", ebb, ebb_param, vreg);
+                    ebb_vregs.push(vreg);
+                }
+                vregs.ebb_params_vreg[ebb] = Some(ebb_vregs);
+            }
+
+            // Step 2: assign values to instructions.
+            // - if it's a control flow instruction, then rewrite it.
+            // - otherwise, one vreg for each result produced.
+
+            // First collect the vreg copies that are needed in this step, and add them to the IR
+            // graph later, to avoid borrowing the IR graph while we're iterating on it.
+            let mut vreg_copies_to_insert = Vec::new();
+
+            for inst in self.cur.func.layout.ebb_insts(ebb) {
+                // Sanity check: every value mentioned in the instruction has been assigned a
+                // virtual register.
+                for &input in self.cur.func.dfg.inst_args(inst) {
+                    debug_assert!(
+                        vregs.value_vreg[input].is_some(),
+                        "missing vreg for an inst's input"
+                    );
+                }
+
+                // Assign a virtual register to every result.
+                for &result in self.cur.func.dfg.inst_results(inst) {
+                    let vreg = vregs.vregs.push(ValueList::new());
+                    vregs.vregs[vreg].push(result, &mut vregs.value_pool);
+                    debug_assert!(
+                        vregs.value_vreg[result].is_none(),
+                        "ssa value assigned twice"
+                    );
+                    vregs.value_vreg[result] = Some(vreg);
+                    info!("{:?}: inst result {} has vreg {}", ebb, result, vreg);
+                }
+
+                if self.cur.func.dfg[inst].opcode().is_branch() {
+                    let target = match self.cur.func.dfg[inst] {
+                        InstructionData::Branch { destination, .. }
+                        | InstructionData::BranchIcmp { destination, .. }
+                        | InstructionData::BranchInt { destination, .. }
+                        | InstructionData::BranchFloat { destination, .. }
+                        | InstructionData::BranchTable { destination, .. }
+                        | InstructionData::Jump { destination, .. } => destination,
+                        _ => panic!("Unexpected branch format in make_phis_explicit"),
+                    };
+
+                    // Make sure that the target EBBs has virtual regs.
+                    if vregs.ebb_params_vreg[target].is_none() {
+                        // TODO common this out in a small helper function.
+                        // This block hasn't ever been visited, allocate vregs.
+                        let mut ebb_vregs =
+                            Vec::with_capacity(self.cur.func.dfg.num_ebb_params(target));
+                        for &ebb_param in self.cur.func.dfg.ebb_params(target) {
+                            let vreg = vregs.vregs.push(ValueList::new());
+                            vregs.vregs[vreg].push(ebb_param, &mut vregs.value_pool);
+                            vregs.value_vreg[ebb_param] = Some(vreg);
+                            ebb_vregs.push(vreg);
+                            info!("{:?}: param {} has vreg {}", ebb, ebb_param, vreg);
+                        }
+                        vregs.ebb_params_vreg[target] = Some(ebb_vregs);
+                    }
+
+                    // Introduce a parallel copy for every single EBB param.
+                    let ebb_vregs = vregs.ebb_params_vreg[target].as_ref().unwrap();
+                    debug_assert!(
+                        self.cur.func.dfg.inst_variable_args(inst).len() == ebb_vregs.len()
+                    );
+
+                    // Because of branch splitting, only terminator instructions can have branch
+                    // parameters.
+                    debug_assert!(
+                        self.cur.func.dfg[inst].opcode().is_terminator()
+                            || self.cur.func.dfg.inst_variable_args(inst).len() == 0
+                    );
+
+                    if self.cur.func.dfg.inst_variable_args(inst).len() == 0 {
+                        continue;
+                    }
+
+                    for (&param, &ebb_vreg) in self
+                        .cur
+                        .func
+                        .dfg
+                        .inst_variable_args(inst)
+                        .iter()
+                        .zip(ebb_vregs.iter())
+                    {
+                        let source_vreg =
+                            vregs.value_vreg[param].expect("branch param has no vreg");
+                        vreg_copies_to_insert.push((source_vreg, ebb_vreg));
+                    }
+
+                    // Keep only branch arguments, remove passed variables.
+                    {
+                        // TODO see if we could factor this code out in the valuelist impl, or at
+                        // least in the dfg.
+                        let dfg = &mut self.cur.func.dfg;
+                        let branch_args = dfg[inst]
+                            .take_value_list()
+                            .expect("branch params")
+                            .as_slice(&dfg.value_lists)
+                            .iter()
+                            .copied()
+                            .collect::<Vec<_>>();
+                        let (new_branch_args, _) = branch_args
+                            .split_at(dfg[inst].opcode().constraints().num_fixed_value_arguments());
+                        let new_branch_value_list =
+                            ValueList::from_slice(new_branch_args, &mut dfg.value_lists);
+                        dfg[inst].put_value_list(new_branch_value_list);
+                    }
+                }
+            }
+
+            // Actually add the vreg copies.
+            self.cur.goto_last_inst(ebb);
+            for (source_vreg, dest_vreg) in vreg_copies_to_insert {
+                info!("{:?}: copy_vreg {} -> {}", ebb, source_vreg, dest_vreg);
+                // TODO ins() requires the instruction to be encodable, and this isn't the case for
+                // copy_vreg, which is just there for regalloc purposes, so we might need to use a
+                // different way to represent it.
+                //self.cur.ins().copy_vreg(source_vreg, dest_vreg);
+            }
+        }
+
+        // Eventually, remove branch parameters for all the blocks. Do this after iterating over
+        // all the blocks, to make sure we don't lose information related to branch going in either
+        // direction.
+        for ebb in self.cur.func.layout.ebbs() {
+            let ebb_params = self
+                .cur
+                .func
+                .dfg
+                .ebb_params(ebb)
+                .iter()
+                .cloned()
+                .collect::<Vec<_>>();
+            for ebb_param in ebb_params {
+                self.cur.func.dfg.swap_remove_ebb_param(ebb_param);
+            }
+        }
+    }
 }
 
 impl AAState {
     /// Create a new alt allocator state.
     pub fn new() -> Self {
         Self {
-            vregs_form: VirtualRegs::new(),
+            vregs: VirtualRegs::new(),
         }
     }
 
     /// Clear the state of the allocator.
     pub fn clear(&mut self) {
-        self.vregs_form.clear();
+        self.vregs.clear();
     }
 
     /// Run register allocation.
@@ -836,14 +1006,14 @@ impl AAState {
         branch_splitting::run(isa, ctx.cur.func, cfg, ctx.domtree, ctx.topo);
         ctx.show(limits, run_number, "After branch splitting");
 
-        make_phis_explicit();
+        ctx.make_phis_explicit();
         ctx.show(limits, run_number, "After making phis explicit");
 
-        unimplemented!();
+        unimplemented!("computing live values");
 
-        let r = ctx.run_minimal_allocator();
-        ctx.show(limits, run_number, "Completed");
+        //let r = ctx.run_minimal_allocator();
+        //ctx.show(limits, run_number, "Completed");
 
-        r
+        //r
     }
 }

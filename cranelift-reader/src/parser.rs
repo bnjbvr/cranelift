@@ -6,7 +6,6 @@ use crate::lexer::{LexError, Lexer, LocatedError, LocatedToken, Token};
 use crate::sourcemap::SourceMap;
 use crate::testcommand::TestCommand;
 use crate::testfile::{Comment, Details, Feature, TestFile};
-use cranelift_codegen::VirtReg;
 use cranelift_codegen::entity::EntityRef;
 use cranelift_codegen::ir;
 use cranelift_codegen::ir::entities::AnyEntity;
@@ -22,6 +21,7 @@ use cranelift_codegen::ir::{
 };
 use cranelift_codegen::isa::{self, CallConv, Encoding, RegUnit, TargetIsa};
 use cranelift_codegen::packed_option::ReservedValue;
+use cranelift_codegen::VirtReg;
 use cranelift_codegen::{settings, timing};
 use std::mem;
 use std::str::FromStr;
@@ -2786,9 +2786,7 @@ impl<'a> Parser<'a> {
             InstructionFormat::CopyVreg => {
                 let src = self.match_vreg()?;
                 let dst = self.match_vreg()?;
-                InstructionData::CopyVreg {
-                    opcode, src, dst
-                }
+                InstructionData::CopyVreg { opcode, src, dst }
             }
         };
         Ok(idata)
