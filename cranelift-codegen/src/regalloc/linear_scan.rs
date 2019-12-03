@@ -66,10 +66,10 @@ struct VirtRegCopy {
 struct VirtualRegs {
     /// The primary table of virtual registers.
     vregs: PrimaryMap<VirtReg, ValueList>,
-    value_vreg: SecondaryMap<Value, Option<VirtReg>>,
+    value_vreg: PrimaryMap<Value, VirtReg>,
     value_pool: ListPool<Value>,
 
-    ebb_params_vreg: SecondaryMap<Ebb, Option<Vec<VirtReg>>>,
+    ebb_params_vreg: PrimaryMap<Ebb, Vec<VirtReg>>,
     parallel_assignments: SecondaryMap<Ebb, Option<Vec<VirtRegCopy>>>,
 }
 
@@ -77,9 +77,9 @@ impl VirtualRegs {
     fn new() -> Self {
         Self {
             vregs: PrimaryMap::new(),
-            value_vreg: SecondaryMap::new(),
+            value_vreg: PrimaryMap::new(),
             value_pool: ListPool::new(),
-            ebb_params_vreg: SecondaryMap::new(),
+            ebb_params_vreg: PrimaryMap::new(),
             parallel_assignments: SecondaryMap::new(),
         }
     }
@@ -236,10 +236,12 @@ impl<'a> Context<'a> {
         self.topo.reset(self.cur.func.layout.ebbs());
 
         let vregs = &mut self.state.vregs;
+        let mut value_vreg = SecondaryMap::new();
+        let mut ebb_params_vreg: SecondaryMap<Ebb, Option<Vec<VirtReg>>> = SecondaryMap::new();
 
         while let Some(ebb) = self.topo.next(&self.cur.func.layout, self.domtree) {
             // Step 1: assign virtual reg to the ebb parameters.
-            if let Some(ebb_vregs) = &vregs.ebb_params_vreg[ebb] {
+            if let Some(ebb_vregs) = &ebb_params_vreg[ebb] {
                 // If it's already been visited, all the vregs must have been preallocated.
                 debug_assert!(ebb_vregs.len() == self.cur.func.dfg.num_ebb_params(ebb));
             } else {
@@ -248,23 +250,21 @@ impl<'a> Context<'a> {
                 for &ebb_param in self.cur.func.dfg.ebb_params(ebb) {
                     let vreg = vregs.vregs.push(ValueList::new());
                     vregs.vregs[vreg].push(ebb_param, &mut vregs.value_pool);
-                    vregs.value_vreg[ebb_param] = Some(vreg);
+                    value_vreg[ebb_param] = Some(vreg);
                     debug!("{:?}: param {} has vreg {}", ebb, ebb_param, vreg);
                     ebb_vregs.push(vreg);
                 }
-                vregs.ebb_params_vreg[ebb] = Some(ebb_vregs);
+                ebb_params_vreg[ebb] = Some(ebb_vregs);
             }
 
             // Step 2: assign values to instructions.
-            // - if it's a control flow instruction, then rewrite it.
-            // - otherwise, one vreg for each result produced.
 
             for inst in self.cur.func.layout.ebb_insts(ebb) {
                 // Sanity check: every value mentioned in the instruction has been assigned a
                 // virtual register.
                 for &input in self.cur.func.dfg.inst_args(inst) {
                     debug_assert!(
-                        vregs.value_vreg[input].is_some(),
+                        value_vreg[input].is_some(),
                         "missing vreg for an inst's input"
                     );
                 }
@@ -273,11 +273,8 @@ impl<'a> Context<'a> {
                 for &result in self.cur.func.dfg.inst_results(inst) {
                     let vreg = vregs.vregs.push(ValueList::new());
                     vregs.vregs[vreg].push(result, &mut vregs.value_pool);
-                    debug_assert!(
-                        vregs.value_vreg[result].is_none(),
-                        "ssa value assigned twice"
-                    );
-                    vregs.value_vreg[result] = Some(vreg);
+                    debug_assert!(value_vreg[result].is_none(), "ssa value assigned twice");
+                    value_vreg[result] = Some(vreg);
                     debug!("{:?}: inst result {} has vreg {}", ebb, result, vreg);
                 }
 
@@ -293,7 +290,7 @@ impl<'a> Context<'a> {
                     };
 
                     // Make sure that the target EBBs has virtual regs.
-                    if vregs.ebb_params_vreg[target].is_none() {
+                    if ebb_params_vreg[target].is_none() {
                         // TODO common this out in a small helper function.
                         // This block hasn't ever been visited, allocate vregs.
                         let mut ebb_vregs =
@@ -301,15 +298,15 @@ impl<'a> Context<'a> {
                         for &ebb_param in self.cur.func.dfg.ebb_params(target) {
                             let vreg = vregs.vregs.push(ValueList::new());
                             vregs.vregs[vreg].push(ebb_param, &mut vregs.value_pool);
-                            vregs.value_vreg[ebb_param] = Some(vreg);
+                            value_vreg[ebb_param] = Some(vreg);
                             ebb_vregs.push(vreg);
                             debug!("{:?}: param {} has vreg {}", ebb, ebb_param, vreg);
                         }
-                        vregs.ebb_params_vreg[target] = Some(ebb_vregs);
+                        ebb_params_vreg[target] = Some(ebb_vregs);
                     }
 
                     // Introduce a parallel copy for every single EBB param.
-                    let ebb_vregs = vregs.ebb_params_vreg[target].as_ref().unwrap();
+                    let ebb_vregs = ebb_params_vreg[target].as_ref().unwrap();
                     debug_assert!(
                         self.cur.func.dfg.inst_variable_args(inst).len() == ebb_vregs.len()
                     );
@@ -325,7 +322,7 @@ impl<'a> Context<'a> {
                         continue;
                     }
 
-                    let mut parallel_assignments = Vec::new();
+                    let mut ebb_parallel_assignments = Vec::new();
                     for (&param, &ebb_vreg) in self
                         .cur
                         .func
@@ -334,16 +331,26 @@ impl<'a> Context<'a> {
                         .iter()
                         .zip(ebb_vregs.iter())
                     {
-                        let source_vreg =
-                            vregs.value_vreg[param].expect("branch param has no vreg");
-                        parallel_assignments.push(VirtRegCopy {
+                        let source_vreg = value_vreg[param].expect("branch param has no vreg");
+                        ebb_parallel_assignments.push(VirtRegCopy {
                             src: source_vreg,
                             dst: ebb_vreg,
                         });
                     }
-                    vregs.parallel_assignments[ebb] = Some(parallel_assignments);
+                    vregs.parallel_assignments[ebb] = Some(ebb_parallel_assignments);
                 }
             }
+        }
+
+        // De-Option-ize all the structures!
+        for (value, vreg) in value_vreg.iter() {
+            let pushed = vregs.value_vreg.push(vreg.unwrap());
+            debug_assert!(pushed.as_u32() == value.as_u32());
+        }
+        for (ebb, param_vregs) in ebb_params_vreg.iter() {
+            // TODO avoid the clone by implementing into_iter on SecondaryMap?
+            let pushed = vregs.ebb_params_vreg.push(param_vregs.clone().unwrap());
+            debug_assert!(pushed.as_u32() == ebb.as_u32());
         }
     }
 
@@ -364,11 +371,10 @@ impl<'a> Context<'a> {
 
             for inst in self.cur.func.layout.ebb_insts(ebb) {
                 for &result in self.cur.func.dfg.inst_results(inst) {
-                    let result_vreg = vregs.value_vreg[result].unwrap();
-                    defs.insert(result_vreg);
+                    defs.insert(vregs.value_vreg[result]);
                 }
                 for &param in self.cur.func.dfg.inst_args(inst) {
-                    let param_vreg = vregs.value_vreg[param].unwrap();
+                    let param_vreg = vregs.value_vreg[param];
                     if !defs.contains(&param_vreg) {
                         uses.insert(param_vreg);
                     }
@@ -439,7 +445,7 @@ impl<'a> Context<'a> {
         let layout = &self.cur.func.layout;
         let entry_block = layout.entry_block().unwrap();
         for &ebb_param in self.cur.func.dfg.ebb_params(entry_block) {
-            let vreg = vregs.value_vreg[ebb_param].unwrap();
+            let vreg = vregs.value_vreg[ebb_param];
             live_intervals[vreg].from = Some(entry_block.into());
         }
 
@@ -449,7 +455,7 @@ impl<'a> Context<'a> {
         for ebb in layout.ebbs() {
             for inst in layout.ebb_insts(ebb) {
                 for &param in self.cur.func.dfg.inst_args(inst) {
-                    let vreg = vregs.value_vreg[param].unwrap();
+                    let vreg = vregs.value_vreg[param];
                     if live_intervals[vreg]
                         .to
                         .map_or(true, |prev_to| layout.cmp(prev_to, inst) == Ordering::Less)
@@ -459,7 +465,7 @@ impl<'a> Context<'a> {
                 }
 
                 for &result in self.cur.func.dfg.inst_results(inst) {
-                    let vreg = vregs.value_vreg[result].unwrap();
+                    let vreg = vregs.value_vreg[result];
                     if live_intervals[vreg].from.map_or(true, |prev_from| {
                         layout.cmp(prev_from, inst) == Ordering::Greater
                     }) {
