@@ -143,6 +143,43 @@ impl VirtualRegs {
 //}
 //}
 
+trait VirtRegSet {
+    fn insert(&mut self, vreg: VirtReg);
+    fn contains(&self, vreg: &VirtReg) -> bool;
+    fn union(&self, other: &Self) -> Self;
+    fn difference(&self, other: &Self) -> Self;
+}
+
+#[derive(Default, Clone, Debug, PartialEq)]
+struct VirtRegHashSet {
+    set: HashSet<VirtReg>,
+}
+
+impl VirtRegHashSet {
+    fn new() -> Self {
+        Self {
+            set: HashSet::new(),
+        }
+    }
+}
+
+impl VirtRegSet for VirtRegHashSet {
+    fn insert(&mut self, vreg: VirtReg) {
+        self.set.insert(vreg);
+    }
+    fn contains(&self, vreg: &VirtReg) -> bool {
+        self.set.contains(vreg)
+    }
+    fn union(&self, other: &VirtRegHashSet) -> VirtRegHashSet {
+        let set = HashSet::from_iter(self.set.union(&other.set).cloned());
+        VirtRegHashSet { set }
+    }
+    fn difference(&self, other: &VirtRegHashSet) -> VirtRegHashSet {
+        let set = HashSet::from_iter(self.set.difference(&other.set).cloned());
+        VirtRegHashSet { set }
+    }
+}
+
 #[derive(Clone, Default)]
 struct LiveInterval {
     from: Option<ProgramPoint>,
@@ -322,8 +359,8 @@ impl<'a> Context<'a> {
         let vregs = &self.state.vregs;
 
         for ebb in self.cur.func.layout.ebbs() {
-            let mut uses = HashSet::new();
-            let mut defs = HashSet::new();
+            let mut uses = VirtRegHashSet::new();
+            let mut defs = VirtRegHashSet::new();
 
             for inst in self.cur.func.layout.ebb_insts(ebb) {
                 for &result in self.cur.func.dfg.inst_results(inst) {
@@ -360,9 +397,9 @@ impl<'a> Context<'a> {
 
         debug!("initial liveouts");
         for ebb in self.cur.func.layout.ebbs() {
-            liveouts[ebb] = HashSet::new();
+            liveouts[ebb] = VirtRegHashSet::new();
             for succ in cfg.succ_iter(ebb) {
-                liveouts[ebb] = HashSet::from_iter(liveouts[ebb].union(&ebb_uses[succ]).cloned());
+                liveouts[ebb] = liveouts[ebb].union(&ebb_uses[succ]);
             }
             debug!("\t{}: {:?}", ebb, liveouts[ebb]);
         }
@@ -375,11 +412,9 @@ impl<'a> Context<'a> {
                 for succ in cfg.succ_iter(ebb) {
                     // Variables live in successor blocks of the successor, that have not been
                     // redefined.
-                    let live_forward =
-                        HashSet::from_iter(liveouts[succ].difference(&ebb_defs[succ]).cloned());
+                    let live_forward = liveouts[succ].difference(&ebb_defs[succ]);
                     // unioned with the set of variables used in this successor.
-                    let new_liveout =
-                        HashSet::from_iter(ebb_uses[succ].union(&live_forward).cloned());
+                    let new_liveout = ebb_uses[succ].union(&live_forward);
                     if new_liveout != liveouts[ebb] {
                         changed = true;
                         liveouts[ebb] = new_liveout;
