@@ -337,6 +337,7 @@ impl<'a> Context<'a> {
                             dst: ebb_vreg,
                         });
                     }
+                    debug_assert!(vregs.parallel_assignments[ebb].is_none());
                     vregs.parallel_assignments[ebb] = Some(ebb_parallel_assignments);
                 }
             }
@@ -447,6 +448,55 @@ impl<'a> Context<'a> {
         for &ebb_param in self.cur.func.dfg.ebb_params(entry_block) {
             let vreg = vregs.value_vreg[ebb_param];
             live_intervals[vreg].from = Some(entry_block.into());
+        }
+
+        // Go through all the blocks in post order, reading them backwards, to infer live
+        // intervals.
+        for &ebb in self.domtree.cfg_postorder() {
+            for inst in self.cur.func.layout.ebb_insts(ebb).rev() {
+
+                // Parallel assignments happen at the end of an EBB, so start with those.
+                if let Some(ref assignments) = vregs.parallel_assignments[ebb] {
+                    let last_inst = self.cur.func.layout.last_inst(ebb).unwrap();
+                    for assignment in assignments {
+                        debug_assert!(
+                            live_intervals[assignment.dst].from.map_or(true, |prev_from| {
+                                layout.cmp(last_inst, prev_from) != Ordering::Greater
+                            }),
+                            "clobbering an earlier definition in a parallel assignment"
+                        );
+                        live_intervals[assignment.dst].from = Some(last_inst.into());
+
+                        // TODO probably should use a better granularity, so have real instructions
+                        // represent parallel copies.
+                        let src = assignment.src;
+                        // XXX revisit from here.
+                        if live_intervals[src].to.is_none() && !liveouts[ebb].contains(&src) {
+                            live_intervals[src].to = Some(last_inst.into());
+                        }
+                    }
+                }
+
+                for &arg in self.cur.func.dfg.inst_args(inst) {
+                    let vreg = vregs.value_vreg[arg];
+                    if live_intervals[vreg].to.is_none() && !liveouts[ebb].contains(&vreg) {
+                        live_intervals[vreg].to = Some(inst.into());
+                    }
+                }
+
+                for &result in self.cur.func.dfg.inst_results(inst) {
+                    let vreg = vregs.value_vreg[result];
+                    // This will clobber the "from" program point for values iterated over late in
+                    // the pipeline, which is fine: we want to find the first definition.
+                    debug_assert!(
+                        live_intervals[vreg].from.map_or(true, |prev_from| {
+                            layout.cmp(inst, prev_from) != Ordering::Greater
+                        }),
+                        "clobbering an earlier definition in an instruction"
+                    );
+                    live_intervals[vreg].from = Some(inst.into());
+                }
+            }
         }
 
         // TODO Open question: is it actually necessary to compute liveouts?
