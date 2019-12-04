@@ -2,9 +2,11 @@
 
 use crate::iter::{Iter, IterMut};
 use crate::keys::Keys;
+use crate::primary::PrimaryMap;
 use crate::EntityRef;
 use alloc::vec::Vec;
 use core::cmp::min;
+use core::iter::FromIterator;
 use core::marker::PhantomData;
 use core::ops::{Index, IndexMut};
 use core::slice;
@@ -263,6 +265,22 @@ where
             unused: PhantomData {},
         })
     }
+}
+
+/// A common pattern might be to compute a mapping of elements out-of-order using an Option to
+/// defer the computation, with the requirement of having a full map of Some() at the end. This
+/// function converts a secondary map of Option<V> into a primary map of V, doing so.
+pub fn into_primary_map<K, V>(map: SecondaryMap<K, Option<V>>) -> PrimaryMap<K, V>
+where
+    K: EntityRef,
+    V: Clone,
+{
+    PrimaryMap::from_iter(
+        map.elems
+            .into_iter()
+            .enumerate()
+            .map(|(i, opt)| opt.unwrap_or_else(|| panic!("element at {} is None", i))),
+    )
 }
 
 #[cfg(test)]

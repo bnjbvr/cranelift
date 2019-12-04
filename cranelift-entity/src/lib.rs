@@ -137,6 +137,7 @@ pub use self::boxed_slice::BoxedSlice;
 pub use self::iter::{Iter, IterMut};
 pub use self::keys::Keys;
 pub use self::list::{EntityList, ListPool};
+pub use self::map::into_primary_map;
 pub use self::map::SecondaryMap;
 pub use self::primary::PrimaryMap;
 pub use self::set::EntitySet;

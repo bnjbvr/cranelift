@@ -12,6 +12,7 @@ use crate::isa::TargetIsa;
 use crate::regalloc::branch_splitting;
 use crate::regalloc::coalescing::Coalescing;
 use crate::regalloc::coloring::Coloring;
+use crate::regalloc::linear_scan::LsraState;
 use crate::regalloc::live_value_tracker::LiveValueTracker;
 use crate::regalloc::liveness::Liveness;
 use crate::regalloc::reload::Reload;
@@ -24,7 +25,6 @@ use crate::topo_order::TopoOrder;
 use crate::verifier::{
     verify_context, verify_cssa, verify_liveness, verify_locations, VerifierErrors,
 };
-use crate::regalloc::linear_scan::LsraState;
 
 /// Persistent memory allocations for register allocation.
 pub struct Context {

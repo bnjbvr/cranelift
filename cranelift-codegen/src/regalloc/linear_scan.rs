@@ -2,39 +2,36 @@
 //! off-by-one errors.
 
 use core::cmp::Ordering;
+use core::fmt;
 use std::collections::HashSet;
 use std::iter::FromIterator;
 use std::vec::Vec;
 
 use log::debug;
 
-use crate::cursor::{Cursor, EncCursor};
+use crate::cursor::EncCursor;
 use crate::dominator_tree::DominatorTree;
+use crate::entity::into_primary_map;
+use crate::entity::{EntityList, ListPool, PrimaryMap, SecondaryMap};
 use crate::flowgraph::ControlFlowGraph;
-use crate::ir::{
-    AbiParam, ArgumentLoc, Ebb, Function, Inst, InstBuilder, InstructionData, Opcode, ProgramOrder,
-    ProgramPoint, StackSlotKind, Type, Value, ValueLoc,
-};
-use crate::isa::{ConstraintKind, EncInfo, TargetIsa};
+use crate::ir::{Ebb, Function, Inst, InstructionData, ProgramOrder, ProgramPoint, Value};
+use crate::isa::{EncInfo, TargetIsa};
 use crate::topo_order::TopoOrder;
 
-use crate::isa::registers::{RegClass, RegUnit};
 use crate::regalloc::branch_splitting;
 use crate::regalloc::register_set::RegisterSet;
-
-use crate::entity::{EntityList, ListPool, PrimaryMap, SecondaryMap};
 use crate::regalloc::virtregs::VirtReg;
 
 struct Context<'a> {
     // Set of registers that the allocator can use.
-    usable_regs: RegisterSet,
+    _usable_regs: RegisterSet,
 
     // Current instruction as well as reference to function and ISA.
     cur: EncCursor<'a>,
 
     // Cached ISA information.
     // We save it here to avoid frequent virtual function calls on the `TargetIsa` trait object.
-    encinfo: EncInfo,
+    _encinfo: EncInfo,
 
     // References to contextual data structures we need.
     domtree: &'a mut DominatorTree,
@@ -66,21 +63,30 @@ struct VirtRegCopy {
 struct VirtualRegs {
     /// The primary table of virtual registers.
     vregs: PrimaryMap<VirtReg, ValueList>,
-    value_vreg: PrimaryMap<Value, VirtReg>,
+
+    /// A mapping from value to its own virtual register. Values with None after live analysis are
+    /// unused and thus dead.
+    value_vreg: SecondaryMap<Value, Option<VirtReg>>,
+
+    /// A local value pool.
     value_pool: ListPool<Value>,
 
+    /// A mapping of basic block to virtual registers for all its params.
     ebb_params_vreg: PrimaryMap<Ebb, Vec<VirtReg>>,
-    parallel_assignments: SecondaryMap<Ebb, Option<Vec<VirtRegCopy>>>,
+
+    /// Sequence of virtual register copies appending at the end of each basic block. Note they're
+    /// supposed to happen in parallel.
+    parallel_moves: SecondaryMap<Ebb, Option<Vec<VirtRegCopy>>>,
 }
 
 impl VirtualRegs {
     fn new() -> Self {
         Self {
             vregs: PrimaryMap::new(),
-            value_vreg: PrimaryMap::new(),
+            value_vreg: SecondaryMap::new(),
             value_pool: ListPool::new(),
             ebb_params_vreg: PrimaryMap::new(),
-            parallel_assignments: SecondaryMap::new(),
+            parallel_moves: SecondaryMap::new(),
         }
     }
 
@@ -89,7 +95,7 @@ impl VirtualRegs {
         self.value_vreg.clear();
         self.value_pool.clear();
         self.ebb_params_vreg.clear();
-        self.parallel_assignments.clear();
+        self.parallel_moves.clear();
     }
 }
 
@@ -150,7 +156,7 @@ trait VirtRegSet {
     fn difference(&self, other: &Self) -> Self;
 }
 
-#[derive(Default, Clone, Debug, PartialEq)]
+#[derive(Default, Clone, PartialEq)]
 struct VirtRegHashSet {
     set: HashSet<VirtReg>,
 }
@@ -160,6 +166,14 @@ impl VirtRegHashSet {
         Self {
             set: HashSet::new(),
         }
+    }
+}
+
+// Shorter implementation of debug for VirtRegHashSet, just showing the set without the structure's
+// name.
+impl fmt::Debug for VirtRegHashSet {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        write!(fmt, "{:?}", self.set)
     }
 }
 
@@ -181,16 +195,22 @@ impl VirtRegSet for VirtRegHashSet {
 }
 
 #[derive(Clone, Default)]
+struct Use {}
+
+#[derive(Clone, Default)]
 struct LiveInterval {
     from: Option<ProgramPoint>,
     to: Option<ProgramPoint>,
+    uses: Vec<Use>,
 }
 
-/// Make phis explicit: replace each block-terminating jump with params, with a parallel assignment
+type LiveMap = SecondaryMap<Ebb, VirtRegHashSet>;
+
+/// Make phis explicit: replace each block-terminating jump with params, with a parallel move
 /// followed by the same jump without params.
 ///
-/// Initially, generate a naive sequentialisation of the parallel assignment just by copying
-/// through a fresh set of vregs.
+/// Initially, generate a naive sequentialisation of the parallel move just by copying through a
+/// fresh set of vregs.
 impl<'a> Context<'a> {
     // TODO not sure this is actually needed, so putting it aside.
     fn remove_ebb_params(&mut self) {
@@ -233,15 +253,15 @@ impl<'a> Context<'a> {
     }
 
     fn make_phis_explicit(&mut self) {
+        let vregs = &mut self.state.vregs;
+
         self.topo.reset(self.cur.func.layout.ebbs());
 
-        let vregs = &mut self.state.vregs;
-        let mut value_vreg = SecondaryMap::new();
         let mut ebb_params_vreg: SecondaryMap<Ebb, Option<Vec<VirtReg>>> = SecondaryMap::new();
 
         while let Some(ebb) = self.topo.next(&self.cur.func.layout, self.domtree) {
             // Step 1: assign virtual reg to the ebb parameters.
-            if let Some(ebb_vregs) = &ebb_params_vreg[ebb] {
+            if let Some(ref ebb_vregs) = ebb_params_vreg[ebb] {
                 // If it's already been visited, all the vregs must have been preallocated.
                 debug_assert!(ebb_vregs.len() == self.cur.func.dfg.num_ebb_params(ebb));
             } else {
@@ -250,7 +270,7 @@ impl<'a> Context<'a> {
                 for &ebb_param in self.cur.func.dfg.ebb_params(ebb) {
                     let vreg = vregs.vregs.push(ValueList::new());
                     vregs.vregs[vreg].push(ebb_param, &mut vregs.value_pool);
-                    value_vreg[ebb_param] = Some(vreg);
+                    vregs.value_vreg[ebb_param] = Some(vreg);
                     debug!("{:?}: param {} has vreg {}", ebb, ebb_param, vreg);
                     ebb_vregs.push(vreg);
                 }
@@ -258,13 +278,12 @@ impl<'a> Context<'a> {
             }
 
             // Step 2: assign values to instructions.
-
             for inst in self.cur.func.layout.ebb_insts(ebb) {
                 // Sanity check: every value mentioned in the instruction has been assigned a
                 // virtual register.
                 for &input in self.cur.func.dfg.inst_args(inst) {
                     debug_assert!(
-                        value_vreg[input].is_some(),
+                        vregs.value_vreg[input].is_some(),
                         "missing vreg for an inst's input"
                     );
                 }
@@ -273,8 +292,11 @@ impl<'a> Context<'a> {
                 for &result in self.cur.func.dfg.inst_results(inst) {
                     let vreg = vregs.vregs.push(ValueList::new());
                     vregs.vregs[vreg].push(result, &mut vregs.value_pool);
-                    debug_assert!(value_vreg[result].is_none(), "ssa value assigned twice");
-                    value_vreg[result] = Some(vreg);
+                    debug_assert!(
+                        vregs.value_vreg[result].is_none(),
+                        "SSA value assigned twice"
+                    );
+                    vregs.value_vreg[result] = Some(vreg);
                     debug!("{:?}: inst result {} has vreg {}", ebb, result, vreg);
                 }
 
@@ -298,7 +320,7 @@ impl<'a> Context<'a> {
                         for &ebb_param in self.cur.func.dfg.ebb_params(target) {
                             let vreg = vregs.vregs.push(ValueList::new());
                             vregs.vregs[vreg].push(ebb_param, &mut vregs.value_pool);
-                            value_vreg[ebb_param] = Some(vreg);
+                            vregs.value_vreg[ebb_param] = Some(vreg);
                             ebb_vregs.push(vreg);
                             debug!("{:?}: param {} has vreg {}", ebb, ebb_param, vreg);
                         }
@@ -322,7 +344,7 @@ impl<'a> Context<'a> {
                         continue;
                     }
 
-                    let mut ebb_parallel_assignments = Vec::new();
+                    let mut ebb_parallel_moves = Vec::new();
                     for (&param, &ebb_vreg) in self
                         .cur
                         .func
@@ -331,84 +353,76 @@ impl<'a> Context<'a> {
                         .iter()
                         .zip(ebb_vregs.iter())
                     {
-                        let source_vreg = value_vreg[param].expect("branch param has no vreg");
-                        ebb_parallel_assignments.push(VirtRegCopy {
+                        let source_vreg =
+                            vregs.value_vreg[param].expect("branch param has no vreg");
+                        ebb_parallel_moves.push(VirtRegCopy {
                             src: source_vreg,
                             dst: ebb_vreg,
                         });
                     }
-                    debug_assert!(vregs.parallel_assignments[ebb].is_none());
-                    vregs.parallel_assignments[ebb] = Some(ebb_parallel_assignments);
+                    debug_assert!(vregs.parallel_moves[ebb].is_none());
+                    vregs.parallel_moves[ebb] = Some(ebb_parallel_moves);
                 }
             }
         }
 
-        // De-Option-ize all the structures!
-        for (value, vreg) in value_vreg.iter() {
-            let pushed = vregs.value_vreg.push(vreg.unwrap());
-            debug_assert!(pushed.as_u32() == value.as_u32());
-        }
-        for (ebb, param_vregs) in ebb_params_vreg.iter() {
-            // TODO avoid the clone by implementing into_iter on SecondaryMap?
-            let pushed = vregs.ebb_params_vreg.push(param_vregs.clone().unwrap());
-            debug_assert!(pushed.as_u32() == ebb.as_u32());
-        }
+        vregs.ebb_params_vreg = into_primary_map(ebb_params_vreg);
     }
 
-    fn compute_live_intervals(&mut self, cfg: &ControlFlowGraph) {
+    fn solve_data_flow_equations(&self, cfg: &ControlFlowGraph) -> (LiveMap, LiveMap) {
         // For each block:
         // - live_outs (set): a (bit-)vector of vregs, set to false initially.
         // - use_before_defs (set): an empty vector of vregs.
         // - defs (set): an empty vector of vregs.
 
+        let vregs = &self.state.vregs;
+
         let mut ebb_uses = SecondaryMap::new();
         let mut ebb_defs = SecondaryMap::new();
 
-        let vregs = &self.state.vregs;
-
+        debug!("Solving data flow equations...");
         for ebb in self.cur.func.layout.ebbs() {
             let mut uses = VirtRegHashSet::new();
             let mut defs = VirtRegHashSet::new();
 
             for inst in self.cur.func.layout.ebb_insts(ebb) {
                 for &result in self.cur.func.dfg.inst_results(inst) {
-                    defs.insert(vregs.value_vreg[result]);
+                    defs.insert(vregs.value_vreg[result].unwrap());
                 }
                 for &param in self.cur.func.dfg.inst_args(inst) {
-                    let param_vreg = vregs.value_vreg[param];
+                    let param_vreg = vregs.value_vreg[param].unwrap();
                     if !defs.contains(&param_vreg) {
                         uses.insert(param_vreg);
                     }
                 }
             }
 
-            if let Some(ref parallel_assignments) = vregs.parallel_assignments[ebb] {
-                for assign in parallel_assignments {
-                    defs.insert(assign.dst);
+            if let Some(ref parallel_moves) = vregs.parallel_moves[ebb] {
+                for pmove in parallel_moves {
+                    defs.insert(pmove.dst);
                 }
-                for assign in parallel_assignments {
-                    if !defs.contains(&assign.src) {
-                        uses.insert(assign.src);
+                for pmove in parallel_moves {
+                    if !defs.contains(&pmove.src) {
+                        uses.insert(pmove.src);
                     }
                 }
             }
 
-            debug!("live_range: uses[{}] = {:?}", ebb, uses);
-            debug!("live_range: defs[{}] = {:?}", ebb, defs);
+            debug!("uses[{}] = {:?}", ebb, uses);
+            debug!("defs[{}] = {:?}", ebb, defs);
 
             ebb_uses[ebb] = uses;
             ebb_defs[ebb] = defs;
         }
 
-        let mut liveouts = SecondaryMap::new();
+        let mut liveins = LiveMap::new();
+        let mut liveouts = LiveMap::new();
 
-        debug!("initial liveouts");
+        debug!("initial values of liveins/liveouts");
         for ebb in self.cur.func.layout.ebbs() {
+            liveins[ebb] = ebb_uses[ebb].clone();
             liveouts[ebb] = VirtRegHashSet::new();
-            for succ in cfg.succ_iter(ebb) {
-                liveouts[ebb] = liveouts[ebb].union(&ebb_uses[succ]);
-            }
-            debug!("\t{}: {:?}", ebb, liveouts[ebb]);
+            debug!("\t{}: in {:?}", ebb, liveins[ebb]);
         }
 
         let mut i = 1;
@@ -416,61 +430,65 @@ impl<'a> Context<'a> {
         while changed {
             changed = false;
             for ebb in self.cur.func.layout.ebbs() {
-                for succ in cfg.succ_iter(ebb) {
-                    // Variables live in successor blocks of the successor, that have not been
-                    // redefined.
-                    let live_forward = liveouts[succ].difference(&ebb_defs[succ]);
-                    // unioned with the set of variables used in this successor.
-                    let new_liveout = ebb_uses[succ].union(&live_forward);
-                    if new_liveout != liveouts[ebb] {
-                        changed = true;
-                        liveouts[ebb] = new_liveout;
-                    }
+                let new_livein = ebb_uses[ebb].union(&liveouts[ebb].difference(&ebb_defs[ebb]));
+                if new_livein != liveins[ebb] {
+                    changed = true;
+                    liveins[ebb] = new_livein;
+                }
+
+                let new_liveout = cfg
+                    .succ_iter(ebb)
+                    .fold(VirtRegHashSet::new(), |acc, succ| acc.union(&liveins[succ]));
+                if new_liveout != liveouts[ebb] {
+                    changed = true;
+                    liveouts[ebb] = new_liveout;
                 }
             }
             debug!("iteration {}", i);
             for ebb in self.cur.func.layout.ebbs() {
-                debug!("\t{}: {:?}", ebb, liveouts[ebb]);
+                debug!("\t{}: in {:?}, out {:?}", ebb, liveins[ebb], liveouts[ebb]);
             }
             i += 1;
         }
 
-        // Computing live intervals:
-        // - for each block, for each inst, find the vreg.
-        // - set interval.from to the first definition point of the vreg.
-        // - if vreg isn't liveout to the current block, set interval.to to the last use of this
-        // vreg
-        // - otherwise continue to other blocks
+        (liveins, liveouts)
+    }
+
+    fn compute_live_intervals(&mut self, cfg: &ControlFlowGraph) {
+        let vregs = &self.state.vregs;
+        let layout = &self.cur.func.layout;
+
+        let (liveins, liveouts) = self.solve_data_flow_equations(cfg);
+
         let mut live_intervals: SecondaryMap<VirtReg, LiveInterval> = SecondaryMap::new();
 
-        let layout = &self.cur.func.layout;
         let entry_block = layout.entry_block().unwrap();
         for &ebb_param in self.cur.func.dfg.ebb_params(entry_block) {
-            let vreg = vregs.value_vreg[ebb_param];
+            let vreg = vregs.value_vreg[ebb_param].unwrap();
             live_intervals[vreg].from = Some(entry_block.into());
         }
+
+        // XXX revisit from here.
 
         // Go through all the blocks in post order, reading them backwards, to infer live
         // intervals.
         for &ebb in self.domtree.cfg_postorder() {
             for inst in self.cur.func.layout.ebb_insts(ebb).rev() {
-
-                // Parallel assignments happen at the end of an EBB, so start with those.
-                if let Some(ref assignments) = vregs.parallel_assignments[ebb] {
+                // Parallel moves happen at the end of an EBB, so start with those.
+                if let Some(ref parallel_moves) = vregs.parallel_moves[ebb] {
                     let last_inst = self.cur.func.layout.last_inst(ebb).unwrap();
-                    for assignment in assignments {
+                    for pmove in parallel_moves {
                         debug_assert!(
-                            live_intervals[assignment.dst].from.map_or(true, |prev_from| {
+                            live_intervals[pmove.dst].from.map_or(true, |prev_from| {
                                 layout.cmp(last_inst, prev_from) != Ordering::Greater
                             }),
-                            "clobbering an earlier definition in a parallel assignment"
+                            "clobbering an earlier definition in a parallel move"
                         );
-                        live_intervals[assignment.dst].from = Some(last_inst.into());
+                        live_intervals[pmove.dst].from = Some(last_inst.into());
 
                         // TODO probably should use a better granularity, so have real instructions
                         // represent parallel copies.
-                        let src = assignment.src;
-                        // XXX revisit from here.
+                        let src = pmove.src;
                         if live_intervals[src].to.is_none() && !liveouts[ebb].contains(&src) {
                             live_intervals[src].to = Some(last_inst.into());
                         }
@@ -478,14 +496,14 @@ impl<'a> Context<'a> {
                 }
 
                 for &arg in self.cur.func.dfg.inst_args(inst) {
-                    let vreg = vregs.value_vreg[arg];
+                    let vreg = vregs.value_vreg[arg].unwrap();
                     if live_intervals[vreg].to.is_none() && !liveouts[ebb].contains(&vreg) {
                         live_intervals[vreg].to = Some(inst.into());
                     }
                 }
 
                 for &result in self.cur.func.dfg.inst_results(inst) {
-                    let vreg = vregs.value_vreg[result];
+                    let vreg = vregs.value_vreg[result].unwrap();
                     // This will clobber the "from" program point for values iterated over late in
                     // the pipeline, which is fine: we want to find the first definition.
                     debug_assert!(
@@ -505,7 +523,7 @@ impl<'a> Context<'a> {
         for ebb in layout.ebbs() {
             for inst in layout.ebb_insts(ebb) {
                 for &param in self.cur.func.dfg.inst_args(inst) {
-                    let vreg = vregs.value_vreg[param];
+                    let vreg = vregs.value_vreg[param].unwrap();
                     if live_intervals[vreg]
                         .to
                         .map_or(true, |prev_to| layout.cmp(prev_to, inst) == Ordering::Less)
@@ -515,7 +533,7 @@ impl<'a> Context<'a> {
                 }
 
                 for &result in self.cur.func.dfg.inst_results(inst) {
-                    let vreg = vregs.value_vreg[result];
+                    let vreg = vregs.value_vreg[result].unwrap();
                     if live_intervals[vreg].from.map_or(true, |prev_from| {
                         layout.cmp(prev_from, inst) == Ordering::Greater
                     }) {
@@ -525,23 +543,23 @@ impl<'a> Context<'a> {
 
                 // Handle parallel assignements on the last block instruction.
                 if self.cur.func.dfg[inst].opcode().is_terminator() {
-                    if let Some(ref parallel_assignments) = vregs.parallel_assignments[ebb] {
-                        for assign in parallel_assignments {
-                            // assign.dst (def, extends FROM side of the interval)
-                            // := assign.src (use, extends TO side of the interval)
-                            if live_intervals[assign.src]
+                    if let Some(ref parallel_moves) = vregs.parallel_moves[ebb] {
+                        for pmove in parallel_moves {
+                            // pmove.dst (def, extends FROM side of the interval)
+                            // := pmove.src (use, extends TO side of the interval)
+                            if live_intervals[pmove.src]
                                 .to
                                 .map_or(true, |prev_to| layout.cmp(prev_to, inst) == Ordering::Less)
                             {
                                 // TODO ?? should we add real copy instructions?
-                                live_intervals[assign.src].to = Some(inst.into());
+                                live_intervals[pmove.src].to = Some(inst.into());
                             }
 
-                            if live_intervals[assign.dst].from.map_or(true, |prev_from| {
+                            if live_intervals[pmove.dst].from.map_or(true, |prev_from| {
                                 layout.cmp(prev_from, inst) == Ordering::Greater
                             }) {
                                 // TODO ?? should we add real copy instructions?
-                                live_intervals[assign.dst].from = Some(inst.into());
+                                live_intervals[pmove.dst].from = Some(inst.into());
                             }
                         }
                     }
@@ -554,12 +572,20 @@ impl<'a> Context<'a> {
             let from = live_int
                 .from
                 .unwrap_or_else(|| panic!("missing live interval FROM for {}", vreg));
-            let to = if let Some(ref to) = live_int.to {
+            if let Some(ref to) = live_int.to {
                 debug!("\t{}: [{:?}, {:?}]", vreg, from, to);
             } else {
                 debug!("\t{}: dead", vreg);
             };
         }
+    }
+
+    fn allocate_registers(&mut self) {
+        unimplemented!("allocate registers");
+    }
+
+    fn resolve_moves(&mut self) {
+        unimplemented!("resolve_moves");
     }
 }
 
@@ -590,9 +616,9 @@ impl LsraState {
         topo: &mut TopoOrder,
     ) {
         let mut ctx = Context {
-            usable_regs: isa.allocatable_registers(func),
+            _usable_regs: isa.allocatable_registers(func),
             cur: EncCursor::new(func, isa),
-            encinfo: isa.encoding_info(),
+            _encinfo: isa.encoding_info(),
             domtree,
             topo,
             state: self,
@@ -607,11 +633,10 @@ impl LsraState {
 
         ctx.compute_live_intervals(cfg);
 
-        unimplemented!("regalloc");
+        ctx.allocate_registers();
 
-        //let r = ctx.run_minimal_allocator();
-        //ctx.show(limits, run_number, "Completed");
+        ctx.resolve_moves();
 
-        //r
+        ctx.show("After register allocation");
     }
 }
