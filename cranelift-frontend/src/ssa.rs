@@ -167,7 +167,7 @@ impl SSABuilder {
     /// Allocate a new blank SSA builder struct. Use the API function to interact with the struct.
     pub fn new() -> Self {
         Self {
-            variables: SecondaryMap::with_default(SecondaryMap::new()),
+            variables: SecondaryMap::new(),
             blocks: PrimaryMap::new(),
             ebb_headers: SecondaryMap::new(),
             calls: Vec::new(),

@@ -23,28 +23,50 @@ use serde::{
 ///
 /// The map does not track if an entry for a key has been inserted or not. Instead it behaves as if
 /// all keys have a default entry from the beginning.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SecondaryMap<K, V>
 where
     K: EntityRef,
-    V: Clone,
+    V: Default,
 {
     elems: Vec<V>,
     default: V,
     unused: PhantomData<K>,
 }
 
+// Manual implementation of the Clone trait when the Value can be copied.
+impl<K, V> Clone for SecondaryMap<K, V>
+where
+    K: EntityRef,
+    V: Default + Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            elems: self.elems.clone(),
+            default: self.default.clone(),
+            unused: PhantomData,
+        }
+    }
+}
+
+impl<K, V> Default for SecondaryMap<K, V>
+where
+    K: EntityRef,
+    V: Default,
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Shared `SecondaryMap` implementation for all value types.
 impl<K, V> SecondaryMap<K, V>
 where
     K: EntityRef,
-    V: Clone,
+    V: Default,
 {
     /// Create a new empty map.
-    pub fn new() -> Self
-    where
-        V: Default,
-    {
+    pub fn new() -> Self {
         Self {
             elems: Vec::new(),
             default: Default::default(),
@@ -55,24 +77,10 @@ where
     /// Create a new, empty map with the specified capacity.
     ///
     /// The map will be able to hold exactly `capacity` elements without reallocating.
-    pub fn with_capacity(capacity: usize) -> Self
-    where
-        V: Default,
-    {
+    pub fn with_capacity(capacity: usize) -> Self {
         Self {
             elems: Vec::with_capacity(capacity),
             default: Default::default(),
-            unused: PhantomData,
-        }
-    }
-
-    /// Create a new empty map with a specified default value.
-    ///
-    /// This constructor does not require V to implement Default.
-    pub fn with_default(default: V) -> Self {
-        Self {
-            elems: Vec::new(),
-            default,
             unused: PhantomData,
         }
     }
@@ -126,8 +134,11 @@ where
     }
 
     /// Resize the map to have `n` entries by adding default entries as needed.
-    pub fn resize(&mut self, n: usize) {
-        self.elems.resize(n, self.default.clone());
+    pub fn resize(&mut self, n: usize)
+    where
+        V: Clone,
+    {
+        self.elems.resize(n, Default::default());
     }
 }
 
@@ -137,12 +148,12 @@ where
 impl<K, V> Index<K> for SecondaryMap<K, V>
 where
     K: EntityRef,
-    V: Clone,
+    V: Default,
 {
     type Output = V;
 
     #[inline(always)]
-    fn index(&self, k: K) -> &V {
+    fn index(&self, k: K) -> &Self::Output {
         self.elems.get(k.index()).unwrap_or(&self.default)
     }
 }
@@ -153,13 +164,13 @@ where
 impl<K, V> IndexMut<K> for SecondaryMap<K, V>
 where
     K: EntityRef,
-    V: Clone,
+    V: Clone + Default,
 {
     #[inline(always)]
     fn index_mut(&mut self, k: K) -> &mut V {
         let i = k.index();
         if i >= self.elems.len() {
-            self.elems.resize(i + 1, self.default.clone());
+            self.elems.resize(i + 1, Default::default());
         }
         &mut self.elems[i]
     }
@@ -168,21 +179,26 @@ where
 impl<K, V> PartialEq for SecondaryMap<K, V>
 where
     K: EntityRef,
-    V: Clone + PartialEq,
+    V: Default + PartialEq,
 {
     fn eq(&self, other: &Self) -> bool {
         let min_size = min(self.elems.len(), other.elems.len());
-        self.default == other.default
-            && self.elems[..min_size] == other.elems[..min_size]
-            && self.elems[min_size..].iter().all(|e| *e == self.default)
-            && other.elems[min_size..].iter().all(|e| *e == other.default)
+        // No need to compaare self.default with other.default, since both SecondaryMap derive the
+        // same Default implementation.
+        self.elems[..min_size] == other.elems[..min_size]
+            && self.elems[min_size..]
+                .iter()
+                .all(|e| *e == Default::default())
+            && other.elems[min_size..]
+                .iter()
+                .all(|e| *e == Default::default())
     }
 }
 
 impl<K, V> Eq for SecondaryMap<K, V>
 where
     K: EntityRef,
-    V: Clone + PartialEq + Eq,
+    V: Default + PartialEq + Eq,
 {
 }
 
@@ -275,7 +291,7 @@ mod tests {
 
     impl EntityRef for E {
         fn new(i: usize) -> Self {
-            E(i as u32)
+            Self(i as u32)
         }
         fn index(self) -> usize {
             self.0 as usize
