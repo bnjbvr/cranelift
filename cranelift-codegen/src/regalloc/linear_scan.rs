@@ -14,13 +14,17 @@ use crate::dominator_tree::DominatorTree;
 use crate::entity::into_primary_map;
 use crate::entity::{EntityList, ListPool, PrimaryMap, SecondaryMap};
 use crate::flowgraph::ControlFlowGraph;
-use crate::ir::{Ebb, Function, Inst, InstructionData, ProgramOrder, ProgramPoint, Value};
+use crate::ir::{Ebb, Function, Inst, InstructionData, Layout, ProgramOrder, ProgramPoint, Value};
 use crate::isa::{EncInfo, TargetIsa};
 use crate::topo_order::TopoOrder;
 
+use crate::regalloc::affinity::Affinity;
 use crate::regalloc::branch_splitting;
+use crate::regalloc::liverange::GenericLiveRange;
 use crate::regalloc::register_set::RegisterSet;
 use crate::regalloc::virtregs::VirtReg;
+
+type LiveRange = GenericLiveRange<Layout, VirtReg>;
 
 struct Context<'a> {
     // Set of registers that the allocator can use.
@@ -460,12 +464,14 @@ impl<'a> Context<'a> {
 
         let (liveins, liveouts) = self.solve_data_flow_equations(cfg);
 
-        let mut live_intervals: SecondaryMap<VirtReg, LiveInterval> = SecondaryMap::new();
+        let mut live_intervals: SecondaryMap<VirtReg, Option<LiveRange>> = SecondaryMap::new();
 
         let entry_block = layout.entry_block().unwrap();
         for &ebb_param in self.cur.func.dfg.ebb_params(entry_block) {
             let vreg = vregs.value_vreg[ebb_param].unwrap();
-            live_intervals[vreg].from = Some(entry_block.into());
+            // TODO put a real affinity in here, as defined by the ISA?
+            let affinity = Affinity::Unassigned;
+            live_intervals[vreg] = Some(LiveRange::new(vreg, entry_block.into(), affinity));
         }
 
         // XXX revisit from here.

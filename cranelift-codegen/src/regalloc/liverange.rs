@@ -148,7 +148,7 @@ use smallvec::SmallVec;
 /// Inserting new instructions in the layout is safe, but removing instructions is not. Besides the
 /// instructions using or defining their value, `LiveRange` structs can contain references to
 /// branch and jump instructions.
-pub type LiveRange = GenericLiveRange<Layout>;
+pub type LiveRange = GenericLiveRange<Layout, Value>;
 
 // See comment of liveins below.
 pub struct Interval {
@@ -160,10 +160,10 @@ pub struct Interval {
 ///
 /// The intended generic parameter is `PO=Layout`, but tests are simpler with a mock order.
 /// Use `LiveRange` instead of using this generic directly.
-pub struct GenericLiveRange<PO: ProgramOrder> {
+pub struct GenericLiveRange<PO: ProgramOrder, V> {
     /// The value described by this live range.
     /// This member can't be modified in case the live range is stored in a `SparseMap`.
-    value: Value,
+    value: V,
 
     /// The preferred register allocation for this value.
     pub affinity: Affinity,
@@ -207,11 +207,11 @@ macro_rules! cmp {
     };
 }
 
-impl<PO: ProgramOrder> GenericLiveRange<PO> {
+impl<PO: ProgramOrder, V> GenericLiveRange<PO, V> {
     /// Create a new live range for `value` defined at `def`.
     ///
     /// The live range will be created as dead, but it can be extended with `extend_in_ebb()`.
-    pub fn new(value: Value, def: ProgramPoint, affinity: Affinity) -> Self {
+    pub fn new(value: V, def: ProgramPoint, affinity: Affinity) -> Self {
         Self {
             value,
             affinity,
@@ -464,7 +464,7 @@ impl<PO: ProgramOrder> GenericLiveRange<PO> {
 }
 
 /// Allow a `LiveRange` to be stored in a `SparseMap` indexed by values.
-impl<PO: ProgramOrder> SparseMapValue<Value> for GenericLiveRange<PO> {
+impl<PO: ProgramOrder> SparseMapValue<Value> for GenericLiveRange<PO, Value> {
     fn key(&self) -> Value {
         self.value
     }
@@ -524,7 +524,7 @@ mod tests {
         }
 
         // Validate the live range invariants.
-        fn validate(&self, lr: &GenericLiveRange<Self>) {
+        fn validate(&self, lr: &GenericLiveRange<Self, Value>) {
             // The def interval must cover a single EBB.
             let def_ebb = self.pp_ebb(lr.def_begin);
             assert_eq!(def_ebb, self.pp_ebb(lr.def_end));
