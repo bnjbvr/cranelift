@@ -1,6 +1,7 @@
 //! There are two main problems in computer science: naming things, invalidating caches, and
 //! off-by-one errors.
 
+use core::cmp;
 use core::cmp::Ordering;
 use core::fmt;
 use std::collections::HashSet;
@@ -20,11 +21,8 @@ use crate::topo_order::TopoOrder;
 
 use crate::regalloc::affinity::Affinity;
 use crate::regalloc::branch_splitting;
-use crate::regalloc::liverange::GenericLiveRange;
 use crate::regalloc::register_set::RegisterSet;
 use crate::regalloc::virtregs::VirtReg;
-
-type LiveRange = GenericLiveRange<Layout, VirtReg>;
 
 struct Context<'a> {
     // Set of registers that the allocator can use.
@@ -103,59 +101,9 @@ impl VirtualRegs {
     }
 }
 
-// TODO use the smart bitvec
-//struct BitVector {
-//vec: Vec<u8>,
-//}
-//impl BitVector {
-//fn new() -> Self {
-//Self { vec: Vec::new() }
-//}
-//fn get(&self, i: usize) -> bool {
-//self.vec.get(i / 8).map_or(false, |v| ((v >> (i % 8)) & 1) == 1)
-//}
-//fn set(&mut self, i: usize) {
-//if self.vec.len() < (i / 8) {
-//self.vec.resize(i / 8, 0);
-//}
-//self.vec[i / 8] |= 1 << (i % 8);
-//}
-//fn unset(&mut self, i: usize) {
-//if self.vec.len() < (i / 8) {
-//self.vec.resize(i / 8, 0);
-//}
-//self.vec[i / 8] &= !(1 << (i % 8));
-//}
-//}
-
-// TODO use the simple and dumb bitvec
-//struct BitVector {
-//vec: Vec<bool>,
-//}
-//impl BitVector {
-//fn new() -> Self {
-//Self { vec: Vec::new() }
-//}
-//fn get(&self, i: usize) -> bool {
-//*self.vec.get(i).unwrap_or(&false)
-//}
-//fn set(&mut self, i: usize) {
-//if self.vec.len() < i {
-//self.vec.resize(i, false);
-//}
-//self.vec[i] = true;
-//}
-//fn unset(&mut self, i: usize) {
-//if self.vec.len() < i {
-//self.vec.resize(i, false);
-//}
-//self.vec[i] = false;
-//}
-//}
-
 trait VirtRegSet {
     fn insert(&mut self, vreg: VirtReg);
-    fn contains(&self, vreg: &VirtReg) -> bool;
+    fn contains(&self, vreg: VirtReg) -> bool;
     fn union(&self, other: &Self) -> Self;
     fn difference(&self, other: &Self) -> Self;
 }
@@ -185,8 +133,8 @@ impl VirtRegSet for VirtRegHashSet {
     fn insert(&mut self, vreg: VirtReg) {
         self.set.insert(vreg);
     }
-    fn contains(&self, vreg: &VirtReg) -> bool {
-        self.set.contains(vreg)
+    fn contains(&self, vreg: VirtReg) -> bool {
+        self.set.contains(&vreg)
     }
     fn union(&self, other: &VirtRegHashSet) -> VirtRegHashSet {
         let set = HashSet::from_iter(self.set.union(&other.set).cloned());
@@ -198,14 +146,190 @@ impl VirtRegSet for VirtRegHashSet {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Copy, Debug, Hash)]
+enum Side {
+    Input,
+    Output,
+}
+
+#[derive(Clone, Hash, PartialEq, Eq)]
+struct ProgramLocation {
+    point: ProgramPoint,
+    side: Side,
+}
+
+impl ProgramLocation {
+    fn new(point: impl Into<ProgramPoint>, side: Side) -> Self {
+        Self {
+            point: point.into(),
+            side,
+        }
+    }
+}
+
+/// Block-local liveness information.
+#[derive(Clone, Copy)]
+enum LocalLiveness {
+    /// Live in and live out to this block.
+    LiveThrough,
+    /// Live in to this block, last use in this block.
+    LiveIn,
+    /// Defined in this block, live out to this block.
+    LiveOut,
+    /// Defined and last use in this block.
+    BlockLocal,
+}
+
+struct LocalLivenessMap<'liveness> {
+    map: SecondaryMap<VirtReg, Option<LocalLiveness>>,
+    ebb: Option<Ebb>,
+    ebb_last_inst: Option<Inst>,
+    liveins: Option<&'liveness VirtRegHashSet>,
+    liveouts: Option<&'liveness VirtRegHashSet>,
+}
+
+impl<'liveness> LocalLivenessMap<'liveness> {
+    fn new() -> Self {
+        Self {
+            map: SecondaryMap::new(),
+            ebb: None,
+            ebb_last_inst: None,
+            liveins: None,
+            liveouts: None,
+        }
+    }
+
+    fn reset<'own>(
+        &'own mut self,
+        ebb: Ebb,
+        ebb_last_inst: Inst,
+        all_liveins: &'liveness LiveMap,
+        all_liveouts: &'liveness LiveMap,
+    ) {
+        self.map.clear();
+        self.ebb = Some(ebb);
+        self.ebb_last_inst = Some(ebb_last_inst);
+        self.liveins = Some(&all_liveins[ebb]);
+        self.liveouts = Some(&all_liveouts[ebb]);
+    }
+
+    fn analyze(&mut self, vreg: VirtReg) -> LocalLiveness {
+        match &self.map[vreg] {
+            Some(entry) => *entry,
+            None => {
+                let liveness = match (
+                    self.liveins.unwrap().contains(vreg),
+                    self.liveouts.unwrap().contains(vreg),
+                ) {
+                    // Live in and out.
+                    (true, true) => LocalLiveness::LiveThrough,
+                    // Live in, last use in this block.
+                    (true, false) => LocalLiveness::LiveIn,
+                    // Defined in this block, live out.
+                    (false, true) => LocalLiveness::LiveOut,
+                    // Local to this block.
+                    (false, false) => LocalLiveness::BlockLocal,
+                };
+                self.map[vreg] = Some(liveness);
+                liveness
+            }
+        }
+    }
+}
+
 #[derive(Clone, Default)]
 struct Use {}
 
-#[derive(Clone, Default)]
+#[derive(Hash, PartialEq, Eq, Clone, Default)]
 struct LiveInterval {
-    from: Option<ProgramPoint>,
-    to: Option<ProgramPoint>,
-    uses: Vec<Use>,
+    from: Option<ProgramLocation>,
+    to: Option<ProgramLocation>,
+}
+
+impl LiveInterval {
+    fn extends_from(&mut self, from: impl Into<ProgramPoint>, side: Side, layout: &Layout) {
+        let from = from.into();
+        match self.from.as_mut() {
+            Some(loc) => {
+                // Replace when from < loc or the input and output side differ.
+                match layout.cmp(from, loc.point) {
+                    Ordering::Less => {
+                        *loc = ProgramLocation::new(from, side);
+                    }
+                    Ordering::Equal => {
+                        if loc.side == Side::Output && side == Side::Input {
+                            loc.side = side;
+                        }
+                    }
+                    Ordering::Greater => {}
+                }
+            }
+            None => self.from = Some(ProgramLocation::new(from, side)),
+        };
+    }
+
+    fn extends_to(&mut self, to: impl Into<ProgramPoint>, side: Side, layout: &Layout) {
+        let to = to.into();
+        match self.to.as_mut() {
+            Some(loc) => {
+                // Replace when to > loc or to == loc but the input and output sides differ.
+                match layout.cmp(to, loc.point) {
+                    Ordering::Greater => {
+                        *loc = ProgramLocation::new(to, side);
+                    }
+                    Ordering::Equal => {
+                        if loc.side == Side::Input && side == Side::Output {
+                            loc.side = side;
+                        }
+                    }
+                    Ordering::Less => {}
+                }
+            }
+            None => self.to = Some(ProgramLocation::new(to, side)),
+        }
+    }
+
+    fn extend(
+        &mut self,
+        vreg: VirtReg,
+        pp: impl Into<ProgramPoint> + Clone,
+        side: Side,
+        local_liveness: &mut LocalLivenessMap,
+        layout: &Layout,
+    ) {
+        let ebb = local_liveness.ebb.unwrap();
+        let last_inst = local_liveness.ebb_last_inst.unwrap();
+        match local_liveness.analyze(vreg) {
+            LocalLiveness::BlockLocal => {
+                self.extends_from(pp.clone(), side, layout);
+                self.extends_to(pp, side, layout);
+            }
+            LocalLiveness::LiveIn => {
+                self.extends_from(ebb, Side::Input, layout);
+                self.extends_to(pp, side, layout);
+            }
+            LocalLiveness::LiveOut => {
+                self.extends_from(pp, side, layout);
+                self.extends_to(last_inst, Side::Output, layout);
+            }
+            LocalLiveness::LiveThrough => {
+                self.extends_from(ebb, Side::Input, layout);
+                self.extends_to(last_inst, Side::Output, layout);
+            }
+        }
+    }
+
+    fn from(&self) -> &ProgramLocation {
+        self.from
+            .as_ref()
+            .expect("no from location for a LiveInterval")
+    }
+
+    fn to(&self) -> &ProgramLocation {
+        self.to
+            .as_ref()
+            .expect("no to locaation for a LiveInterval")
+    }
 }
 
 type LiveMap = SecondaryMap<Ebb, VirtRegHashSet>;
@@ -216,46 +340,6 @@ type LiveMap = SecondaryMap<Ebb, VirtRegHashSet>;
 /// Initially, generate a naive sequentialisation of the parallel move just by copying through a
 /// fresh set of vregs.
 impl<'a> Context<'a> {
-    // TODO not sure this is actually needed, so putting it aside.
-    fn remove_ebb_params(&mut self) {
-        // Eventually, remove branch parameters for all the blocks. Do this after iterating over
-        // all the blocks, to make sure we don't lose information related to branch going in either
-        // direction.
-        for ebb in self.cur.func.layout.ebbs() {
-            let ebb_params = self
-                .cur
-                .func
-                .dfg
-                .ebb_params(ebb)
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>();
-            for ebb_param in ebb_params {
-                self.cur.func.dfg.swap_remove_ebb_param(ebb_param);
-            }
-        }
-    }
-
-    // TODO not sure this is actually needed, keeping in case.
-    fn remove_cfg_params(&mut self, inst: Inst) {
-        debug_assert!(self.cur.func.dfg[inst].opcode().is_terminator());
-        // Keep only branch arguments, remove passed variables.
-        // TODO see if we could factor this code out in the valuelist impl, or at
-        // least in the dfg.
-        let dfg = &mut self.cur.func.dfg;
-        let branch_args = dfg[inst]
-            .take_value_list()
-            .expect("branch params")
-            .as_slice(&dfg.value_lists)
-            .iter()
-            .copied()
-            .collect::<Vec<_>>();
-        let (new_branch_args, _) =
-            branch_args.split_at(dfg[inst].opcode().constraints().num_fixed_value_arguments());
-        let new_branch_value_list = ValueList::from_slice(new_branch_args, &mut dfg.value_lists);
-        dfg[inst].put_value_list(new_branch_value_list);
-    }
-
     fn make_phis_explicit(&mut self) {
         let vregs = &mut self.state.vregs;
 
@@ -275,7 +359,7 @@ impl<'a> Context<'a> {
                     let vreg = vregs.vregs.push(ValueList::new());
                     vregs.vregs[vreg].push(ebb_param, &mut vregs.value_pool);
                     vregs.value_vreg[ebb_param] = Some(vreg);
-                    debug!("{:?}: param {} has vreg {}", ebb, ebb_param, vreg);
+                    debug!("{:?}: {} -> {} (param)", ebb, ebb_param, vreg);
                     ebb_vregs.push(vreg);
                 }
                 ebb_params_vreg[ebb] = Some(ebb_vregs);
@@ -301,7 +385,7 @@ impl<'a> Context<'a> {
                         "SSA value assigned twice"
                     );
                     vregs.value_vreg[result] = Some(vreg);
-                    debug!("{:?}: inst result {} has vreg {}", ebb, result, vreg);
+                    debug!("{:?}: {} -> {} (result)", ebb, result, vreg);
                 }
 
                 if self.cur.func.dfg[inst].opcode().is_branch() {
@@ -317,7 +401,6 @@ impl<'a> Context<'a> {
 
                     // Make sure that the target EBBs has virtual regs.
                     if ebb_params_vreg[target].is_none() {
-                        // TODO common this out in a small helper function.
                         // This block hasn't ever been visited, allocate vregs.
                         let mut ebb_vregs =
                             Vec::with_capacity(self.cur.func.dfg.num_ebb_params(target));
@@ -326,7 +409,7 @@ impl<'a> Context<'a> {
                             vregs.vregs[vreg].push(ebb_param, &mut vregs.value_pool);
                             vregs.value_vreg[ebb_param] = Some(vreg);
                             ebb_vregs.push(vreg);
-                            debug!("{:?}: param {} has vreg {}", ebb, ebb_param, vreg);
+                            debug!("{:?}: {} -> {} (param)", ebb, ebb_param, vreg);
                         }
                         ebb_params_vreg[target] = Some(ebb_vregs);
                     }
@@ -395,7 +478,7 @@ impl<'a> Context<'a> {
                 }
                 for &param in self.cur.func.dfg.inst_args(inst) {
                     let param_vreg = vregs.value_vreg[param].unwrap();
-                    if !defs.contains(&param_vreg) {
+                    if !defs.contains(param_vreg) {
                         uses.insert(param_vreg);
                     }
                 }
@@ -406,7 +489,7 @@ impl<'a> Context<'a> {
                     defs.insert(pmove.dst);
                 }
                 for pmove in parallel_moves {
-                    if !defs.contains(&pmove.src) {
+                    if !defs.contains(pmove.src) {
                         uses.insert(pmove.src);
                     }
                 }
@@ -464,111 +547,70 @@ impl<'a> Context<'a> {
 
         let (liveins, liveouts) = self.solve_data_flow_equations(cfg);
 
-        let mut live_intervals: SecondaryMap<VirtReg, Option<LiveRange>> = SecondaryMap::new();
+        let mut live_intervals: SecondaryMap<VirtReg, LiveInterval> = SecondaryMap::new();
 
-        let entry_block = layout.entry_block().unwrap();
-        for &ebb_param in self.cur.func.dfg.ebb_params(entry_block) {
-            let vreg = vregs.value_vreg[ebb_param].unwrap();
-            // TODO put a real affinity in here, as defined by the ISA?
-            let affinity = Affinity::Unassigned;
-            live_intervals[vreg] = Some(LiveRange::new(vreg, entry_block.into(), affinity));
-        }
-
-        // XXX revisit from here.
+        // A map to keep track of block-local liveness status, reset between each block.
+        let mut local_liveness = LocalLivenessMap::new();
 
         // Go through all the blocks in post order, reading them backwards, to infer live
         // intervals.
+
+        // TODO: revisit this. I am pretty sure this can be do in a better way:
+        // - if a live interval hasn't been created, create a full range the first time, according
+        // to the local analysis.
+        // - if it exists, extend it with local liveness analysis first.
+        // - then when visiting uses and defs (including parallel moves), only refine those
+        // intervals, and skip refining when a value is through.
+
         for &ebb in self.domtree.cfg_postorder() {
+            let last_inst = self.cur.func.layout.last_inst(ebb).unwrap();
+            local_liveness.reset(ebb, last_inst, &liveins, &liveouts);
+
             for inst in self.cur.func.layout.ebb_insts(ebb).rev() {
                 // Parallel moves happen at the end of an EBB, so start with those.
                 if let Some(ref parallel_moves) = vregs.parallel_moves[ebb] {
-                    let last_inst = self.cur.func.layout.last_inst(ebb).unwrap();
                     for pmove in parallel_moves {
-                        debug_assert!(
-                            live_intervals[pmove.dst].from.map_or(true, |prev_from| {
-                                layout.cmp(last_inst, prev_from) != Ordering::Greater
-                            }),
-                            "clobbering an earlier definition in a parallel move"
+                        // Consider that the point of definition for a parallel move is after the
+                        // output of the last instruction, to reflect that all the parallel moves
+                        // conflict with each other.
+                        live_intervals[pmove.dst].extend(
+                            pmove.dst,
+                            last_inst,
+                            Side::Output,
+                            &mut local_liveness,
+                            layout,
                         );
-                        live_intervals[pmove.dst].from = Some(last_inst.into());
 
-                        // TODO probably should use a better granularity, so have real instructions
-                        // represent parallel copies.
-                        let src = pmove.src;
-                        if live_intervals[src].to.is_none() && !liveouts[ebb].contains(&src) {
-                            live_intervals[src].to = Some(last_inst.into());
-                        }
+                        live_intervals[pmove.src].extend(
+                            pmove.src,
+                            last_inst,
+                            Side::Output,
+                            &mut local_liveness,
+                            layout,
+                        );
                     }
                 }
 
                 for &arg in self.cur.func.dfg.inst_args(inst) {
                     let vreg = vregs.value_vreg[arg].unwrap();
-                    if live_intervals[vreg].to.is_none() && !liveouts[ebb].contains(&vreg) {
-                        live_intervals[vreg].to = Some(inst.into());
-                    }
-                }
-
-                for &result in self.cur.func.dfg.inst_results(inst) {
-                    let vreg = vregs.value_vreg[result].unwrap();
-                    // This will clobber the "from" program point for values iterated over late in
-                    // the pipeline, which is fine: we want to find the first definition.
-                    debug_assert!(
-                        live_intervals[vreg].from.map_or(true, |prev_from| {
-                            layout.cmp(inst, prev_from) != Ordering::Greater
-                        }),
-                        "clobbering an earlier definition in an instruction"
+                    live_intervals[vreg].extend(
+                        vreg,
+                        inst,
+                        Side::Input,
+                        &mut local_liveness,
+                        layout,
                     );
-                    live_intervals[vreg].from = Some(inst.into());
-                }
-            }
-        }
-
-        // TODO Open question: is it actually necessary to compute liveouts?
-        // Using LiveOuts, there's a simpler algorithm to compute live intervals by assuming bounds
-        // of the live intervals start and end at BBs (instead of single instructions).
-        for ebb in layout.ebbs() {
-            for inst in layout.ebb_insts(ebb) {
-                for &param in self.cur.func.dfg.inst_args(inst) {
-                    let vreg = vregs.value_vreg[param].unwrap();
-                    if live_intervals[vreg]
-                        .to
-                        .map_or(true, |prev_to| layout.cmp(prev_to, inst) == Ordering::Less)
-                    {
-                        live_intervals[vreg].to = Some(inst.into());
-                    }
                 }
 
                 for &result in self.cur.func.dfg.inst_results(inst) {
                     let vreg = vregs.value_vreg[result].unwrap();
-                    if live_intervals[vreg].from.map_or(true, |prev_from| {
-                        layout.cmp(prev_from, inst) == Ordering::Greater
-                    }) {
-                        live_intervals[vreg].from = Some(inst.into());
-                    }
-                }
-
-                // Handle parallel assignements on the last block instruction.
-                if self.cur.func.dfg[inst].opcode().is_terminator() {
-                    if let Some(ref parallel_moves) = vregs.parallel_moves[ebb] {
-                        for pmove in parallel_moves {
-                            // pmove.dst (def, extends FROM side of the interval)
-                            // := pmove.src (use, extends TO side of the interval)
-                            if live_intervals[pmove.src]
-                                .to
-                                .map_or(true, |prev_to| layout.cmp(prev_to, inst) == Ordering::Less)
-                            {
-                                // TODO ?? should we add real copy instructions?
-                                live_intervals[pmove.src].to = Some(inst.into());
-                            }
-
-                            if live_intervals[pmove.dst].from.map_or(true, |prev_from| {
-                                layout.cmp(prev_from, inst) == Ordering::Greater
-                            }) {
-                                // TODO ?? should we add real copy instructions?
-                                live_intervals[pmove.dst].from = Some(inst.into());
-                            }
-                        }
-                    }
+                    live_intervals[vreg].extend(
+                        vreg,
+                        inst,
+                        Side::Output,
+                        &mut local_liveness,
+                        layout,
+                    );
                 }
             }
         }
@@ -577,17 +619,69 @@ impl<'a> Context<'a> {
         for (vreg, live_int) in live_intervals.iter() {
             let from = live_int
                 .from
+                .as_ref()
                 .unwrap_or_else(|| panic!("missing live interval FROM for {}", vreg));
             if let Some(ref to) = live_int.to {
-                debug!("\t{}: [{:?}, {:?}]", vreg, from, to);
+                debug!(
+                    "\t{}: [{:?}:{:?}, {:?}:{:?}]",
+                    vreg, from.point, from.side, to.point, to.side
+                );
             } else {
                 debug!("\t{}: dead", vreg);
             };
         }
+
+        self.state.live_intervals = live_intervals;
+    }
+
+    fn expire_old_interval(&mut self, interval: &LiveInterval) {
+        unimplemented!("expire_old_interval");
+    }
+
+    fn spill_at_interval(&mut self, interval: &LiveInterval) {
+        unimplemented!("spill_at_interval");
     }
 
     fn allocate_registers(&mut self) {
         unimplemented!("allocate registers");
+
+        let active: HashSet<LiveInterval> = HashSet::new();
+
+        let mut intervals = Vec::from_iter(self.state.live_intervals.values());
+
+        // Sort intervals by increasing start point.
+        let layout = &self.cur.func.layout;
+        intervals.sort_by(|&a, &b| {
+            let a = a.from.as_ref().unwrap();
+            let b = b.from.as_ref().unwrap();
+            match layout.cmp(a.point, b.point) {
+                Ordering::Less => Ordering::Less,
+                Ordering::Greater => Ordering::Greater,
+                Ordering::Equal => match (a.side, b.side) {
+                    (Side::Input, Side::Output) => Ordering::Less,
+                    (Side::Output, Side::Input) => Ordering::Greater,
+                    _ => Ordering::Equal,
+                },
+            }
+        });
+
+        const num_registers: usize = 3; // XXX update this.
+        for interval in intervals {
+            self.expire_old_interval(interval);
+            if active.len() == num_registers {
+                self.spill_at_interval(interval);
+            } else {
+                // XXX continue here.
+                // register[i] = a register removed from the pool of registers.
+                // add i to active, sorted by increasing end point.
+            }
+        }
+
+        // for each live int in sorted:
+        // - expire_old_intervals(int)
+        // - if len(active) == number of available registers
+        //   - spill_at_interval(int)
+        // -
     }
 
     fn resolve_moves(&mut self) {
@@ -597,6 +691,7 @@ impl<'a> Context<'a> {
 
 pub struct LsraState {
     vregs: VirtualRegs,
+    live_intervals: SecondaryMap<VirtReg, LiveInterval>,
 }
 
 impl LsraState {
@@ -604,6 +699,7 @@ impl LsraState {
     pub fn new() -> Self {
         Self {
             vregs: VirtualRegs::new(),
+            live_intervals: SecondaryMap::new(),
         }
     }
 

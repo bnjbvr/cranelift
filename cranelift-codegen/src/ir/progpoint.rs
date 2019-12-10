@@ -13,7 +13,7 @@ use core::u32;
 /// 2. An EBB header.
 ///
 /// This corresponds more or less to the lines in the textual form of Cranelift IR.
-#[derive(PartialEq, Eq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy, Hash)]
 pub struct ProgramPoint(u32);
 
 impl From<Inst> for ProgramPoint {
