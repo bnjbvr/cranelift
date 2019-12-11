@@ -131,6 +131,11 @@ where
     pub fn resize(&mut self, n: usize) {
         self.elems.resize(n, self.default.clone());
     }
+
+    /// Converts this secondary map into a vector of values.
+    pub fn into_values_vec(self) -> Vec<V> {
+        self.elems
+    }
 }
 
 /// Immutable indexing into an `SecondaryMap`.
