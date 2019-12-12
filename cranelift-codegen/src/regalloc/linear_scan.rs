@@ -24,7 +24,7 @@ use crate::flowgraph::ControlFlowGraph;
 use crate::ir::{
     Ebb, Function, Inst, InstructionData, Layout, ProgramOrder, ProgramPoint, Value, ValueLoc,
 };
-use crate::isa::{EncInfo, OperandConstraint, RegClass, RegInfo, TargetIsa};
+use crate::isa::{ConstraintKind, EncInfo, OperandConstraint, RegClass, RegInfo, TargetIsa};
 use crate::topo_order::TopoOrder;
 
 use crate::regalloc::affinity::Affinity;
@@ -453,12 +453,12 @@ impl LiveIntervalGroup {
 
 type LiveMap = SecondaryMap<Ebb, VirtRegHashSet>;
 
-/// Make phis explicit: replace each block-terminating jump with params, with a parallel move
-/// followed by the same jump without params.
-///
-/// Initially, generate a naive sequentialisation of the parallel move just by copying through a
-/// fresh set of vregs.
 impl<'a> Context<'a> {
+    /// Make phis explicit: replace each block-terminating jump with params, with a parallel move
+    /// followed by the same jump without params.
+    ///
+    /// Initially, generate a naive sequentialisation of the parallel move just by copying through
+    /// a fresh set of vregs.
     fn make_phis_explicit(&mut self) {
         let vregs = &mut self.state.vregs;
 
@@ -495,8 +495,28 @@ impl<'a> Context<'a> {
                     );
                 }
 
-                // Assign a virtual register to every result.
-                for &result in self.cur.func.dfg.inst_results(inst) {
+                // Assign a virtual register to every result, unless there's a constraint to reuse
+                // an input.
+                let encoding = &self.cur.func.encodings[inst];
+                let constraints = self.enc_info.operand_constraints(*encoding);
+                for (i, &result) in self.cur.func.dfg.inst_results(inst).iter().enumerate() {
+                    if let Some(constraints) = constraints {
+                        if i < constraints.outs.len() {
+                            match constraints.outs[i].kind {
+                                ConstraintKind::Tied(input_index) => {
+                                    // Reuse the same vreg as the input, since it's a tied operand.
+                                    let input =
+                                        self.cur.func.dfg.inst_args(inst)[input_index as usize];
+                                    let vreg = vregs.value_vreg[input].unwrap();
+                                    vregs.vregs[vreg].push(result, &mut vregs.value_pool);
+                                    vregs.value_vreg[result] = Some(vreg);
+                                    continue;
+                                }
+                                _ => {}
+                            }
+                        }
+                    };
+
                     let vreg = vregs.vregs.push(ValueList::new());
                     vregs.vregs[vreg].push(result, &mut vregs.value_pool);
                     debug_assert!(
@@ -661,10 +681,10 @@ impl<'a> Context<'a> {
     }
 
     fn compute_live_intervals(&mut self, cfg: &ControlFlowGraph) {
-        let vregs = &self.state.vregs;
-        let layout = &self.cur.func.layout;
-
         let (liveins, liveouts) = self.solve_data_flow_equations(cfg);
+
+        let layout = &self.cur.func.layout;
+        let vregs = &self.state.vregs;
 
         let mut live_intervals = LiveIntervalGroup::new();
 
