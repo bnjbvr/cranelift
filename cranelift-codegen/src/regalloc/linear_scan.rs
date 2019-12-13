@@ -2,10 +2,13 @@
 //! off-by-one errors.
 
 // high-level TODO:
-// - add a virtual instruction for the parallel moves located after the last instruction in block,
-// otherwise it conflicts with the real last inst.
+// - entry block: fill incoming arguments
 // - preallocate live intervals with ISA requirements
-// - resolve_moves
+// - calls: add live intervals for physical registers, take them all at calls
+// - calls: correctly fill arguments
+// - resolve_moves:
+//  - moves between blocks
+//  - moves between stack and live registers...
 
 use core::cmp::Ordering;
 use core::fmt;
@@ -16,13 +19,14 @@ use std::vec::Vec;
 
 use log::debug;
 
-use crate::cursor::EncCursor;
+use crate::cursor::{Cursor, EncCursor};
 use crate::dominator_tree::DominatorTree;
 use crate::entity::into_primary_map;
 use crate::entity::{EntityList, ListPool, PrimaryMap, SecondaryMap};
 use crate::flowgraph::ControlFlowGraph;
 use crate::ir::{
-    Ebb, Function, Inst, InstructionData, Layout, ProgramOrder, ProgramPoint, Value, ValueLoc,
+    Ebb, Function, Inst, InstBuilder, InstructionData, Layout, ProgramOrder, ProgramPoint, Value,
+    ValueLoc,
 };
 use crate::isa::{ConstraintKind, EncInfo, OperandConstraint, RegClass, RegInfo, TargetIsa};
 use crate::topo_order::TopoOrder;
@@ -287,6 +291,7 @@ struct LiveInterval {
     vreg: VirtReg,
 
     /// Preferred location for this live interval / vreg.
+    // TODO should we really use this?
     affinity: Affinity,
 
     /// Value location, once it's assigned one.
@@ -466,6 +471,7 @@ impl<'a> Context<'a> {
 
         let mut ebb_params_vreg: SecondaryMap<Ebb, Option<Vec<VirtReg>>> = SecondaryMap::new();
 
+        let mut parallel_copy_locations = Vec::new();
         while let Some(ebb) = self.topo.next(&self.cur.func.layout, self.domtree) {
             // Step 1: assign virtual reg to the ebb parameters.
             if let Some(ref ebb_vregs) = ebb_params_vreg[ebb] {
@@ -510,6 +516,10 @@ impl<'a> Context<'a> {
                                     let vreg = vregs.value_vreg[input].unwrap();
                                     vregs.vregs[vreg].push(result, &mut vregs.value_pool);
                                     vregs.value_vreg[result] = Some(vreg);
+                                    debug!(
+                                        "{}: {} -> {} (tied with input {})",
+                                        ebb, result, vreg, input
+                                    );
                                     continue;
                                 }
                                 _ => {}
@@ -570,6 +580,8 @@ impl<'a> Context<'a> {
                         continue;
                     }
 
+                    parallel_copy_locations.push(inst);
+
                     let mut ebb_parallel_moves = Vec::new();
                     for (&param, &ebb_vreg) in self
                         .cur
@@ -590,6 +602,11 @@ impl<'a> Context<'a> {
                     vregs.parallel_moves[ebb] = Some(ebb_parallel_moves);
                 }
             }
+        }
+
+        for location in parallel_copy_locations {
+            self.cur.goto_after_inst(location);
+            self.cur.ins().regalloc_parallel_copies();
         }
 
         vregs.ebb_params_vreg = into_primary_map(ebb_params_vreg);
@@ -1019,6 +1036,7 @@ impl LsraState {
         ctx.show("After branch splitting");
 
         ctx.make_phis_explicit();
+        ctx.show("After making phis explicit");
 
         ctx.compute_live_intervals(cfg);
 

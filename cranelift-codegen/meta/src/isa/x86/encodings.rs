@@ -460,6 +460,7 @@ pub(crate) fn define(
     let null = shared.by_name("null");
     let popcnt = shared.by_name("popcnt");
     let raw_bitcast = shared.by_name("raw_bitcast");
+    let regalloc_parallel_copies = shared.by_name("regalloc_parallel_copies");
     let regfill = shared.by_name("regfill");
     let regmove = shared.by_name("regmove");
     let regspill = shared.by_name("regspill");
@@ -679,6 +680,7 @@ pub(crate) fn define(
     let rec_urm_noflags_abcd = r.template("urm_noflags_abcd");
     let rec_vconst = r.template("vconst");
     let rec_vconst_optimized = r.template("vconst_optimized");
+    let rec_null_nullary = r.recipe("null_nullary");
 
     // Predicates shorthands.
     let all_ones_funcaddrs_and_not_is_pic =
@@ -704,6 +706,9 @@ pub(crate) fn define(
         set_pinned_reg.bind(I64),
         rec_set_pinned_reg.opcodes(&MOV_STORE).rex().w(),
     );
+
+    e.enc64_rec(regalloc_parallel_copies, rec_null_nullary, 0);
+    e.enc32_rec(regalloc_parallel_copies, rec_null_nullary, 0);
 
     e.enc_i32_i64(iadd, rec_rr.opcodes(&ADD));
     e.enc_i32_i64(iadd_ifcout, rec_rout.opcodes(&ADD));

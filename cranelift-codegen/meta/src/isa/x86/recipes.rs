@@ -350,6 +350,7 @@ pub(crate) fn define<'shared>(
             .operands_out(vec![stack_gpr32])
             .emit(""),
     );
+    recipes.add_recipe(EncodingRecipeBuilder::new("null_nullary", &formats.nullary, 0).emit(""));
 
     recipes.add_recipe(
         EncodingRecipeBuilder::new("get_pinned_reg", &formats.nullary, 0)

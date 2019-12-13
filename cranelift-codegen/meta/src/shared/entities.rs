@@ -35,9 +35,6 @@ pub(crate) struct EntityRefs {
 
     /// A variable-sized list of value operands. Use for Ebb and function call arguments.
     pub(crate) varargs: OperandKind,
-
-    /// A virtual register, used during register allocation.
-    pub(crate) virt_reg: OperandKind,
 }
 
 impl EntityRefs {
@@ -71,8 +68,6 @@ impl EntityRefs {
                         returned from an instruction.
                     "#,
             ),
-
-            virt_reg: new("vreg", "regalloc::virtregs::VirtReg", "A virtual register."),
         }
     }
 }

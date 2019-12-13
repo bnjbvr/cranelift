@@ -8,7 +8,6 @@ use crate::ir::types;
 use crate::ir::{DataFlowGraph, InstructionData};
 use crate::ir::{Inst, Opcode, Type, Value};
 use crate::isa;
-use crate::regalloc;
 
 /// Base trait for instruction builders.
 ///

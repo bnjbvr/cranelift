@@ -104,7 +104,6 @@ mod topo_order;
 mod unreachable_code;
 mod value_label;
 
-pub use crate::regalloc::virtregs::VirtReg;
 pub use crate::result::{CodegenError, CodegenResult};
 
 /// Version number of this crate.

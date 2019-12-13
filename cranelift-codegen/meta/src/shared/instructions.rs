@@ -3661,12 +3661,14 @@ pub(crate) fn define(
         .is_ghost(true),
     );
 
-    let vreg_src = &Operand::new("src", &entities.virt_reg);
-    let vreg_dst = &Operand::new("dst", &entities.virt_reg);
-    ig.push(Inst::new("copy_vreg",
-            r#"Copies a virtual register into another one. Used only internally during register allocation."#,
-            &formats.copy_vreg)
-        .operands_in(vec![vreg_src, vreg_dst]));
+    ig.push(
+        Inst::new(
+            "regalloc_parallel_copies",
+            r#"A placeholder instruction location to contain all the regalloc parallel copies."#,
+            &formats.nullary,
+        )
+        .is_ghost(true),
+    );
 
     ig.build()
 }
