@@ -1,11 +1,19 @@
 //! There are two main problems in computer science: naming things, invalidating caches, and
 //! off-by-one errors.
 
+// MVP:
+// - [ ] preserve registers around calls
+// - [x] tied operands (=> fuses virtual regs)
+// - [ ] fixed operands
+// - [ ] spill
+
 // high-level TODO:
 // - entry block: fill incoming arguments
 // - preallocate live intervals with ISA requirements
 // - calls: add live intervals for physical registers, take them all at calls
-// - calls: correctly fill arguments
+//  - this might call spilling of all values live accross a call, which sounds like a bad idea.
+//  - unless we have a very simple way to split live ranges
+// - calls: correctly fill arguments and read return values.
 // - resolve_moves:
 //  - moves between blocks
 //  - moves between stack and live registers...
@@ -808,23 +816,20 @@ impl<'a> Context<'a> {
         live_intervals: &Vec<LiveInterval>,
     ) {
         debug!("expire_old_intervals for {}", cur);
+
         let cur_int = &live_intervals[cur];
 
-        // Note the index of the last element to remove, and then remove it to work around
-        // borrow-checking issues.
-        // TODO there's probably a simpler way to do it?
-        let mut last_to_remove = None;
-        for (j, &active_index) in active.iter().enumerate() {
-            let active_int = &live_intervals[active_index];
-            if active_int.to.cmp(&cur_int.from, &self.cur.func.layout) != Ordering::Less {
-                break;
+        let mut keep_all = false;
+        active.retain(|&active_index| {
+            if keep_all {
+                return true;
             }
-            last_to_remove = Some(j);
-        }
 
-        if let Some(last_to_remove) = last_to_remove {
-            for i in 0..=last_to_remove {
-                let active_int = &live_intervals[i];
+            let active_int = &live_intervals[active_index];
+
+            // Has this active interval ended before the current interval?
+            if active_int.to.cmp(&cur_int.from, &self.cur.func.layout) == Ordering::Less {
+                // Yes, remove it and free the associated register.
                 match active_int.location {
                     ValueLoc::Reg(reg_unit) => {
                         debug!(
@@ -836,11 +841,15 @@ impl<'a> Context<'a> {
                     }
                     _ => {}
                 }
-                active.remove(i);
+                return false;
             }
-        } else {
-            debug!("expire_old_intervals: no old interval to free");
-        }
+
+            // This is the first active interval which is overlapping with the current one.
+            // Since intervals are oredered by start point, this means all the next intervals
+            // must be kept.
+            keep_all = true;
+            true
+        });
     }
 
     fn spill_at_interval(
