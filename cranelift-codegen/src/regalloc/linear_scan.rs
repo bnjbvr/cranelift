@@ -42,7 +42,6 @@ use crate::isa::{
 };
 use crate::topo_order::TopoOrder;
 
-use crate::regalloc::affinity::Affinity;
 use crate::regalloc::branch_splitting;
 use crate::regalloc::register_set::RegisterSet;
 use crate::regalloc::virtregs::VirtReg;
@@ -290,7 +289,12 @@ impl<'liveness> LocalLivenessMap<'liveness> {
     }
 }
 
-// TODO this could be merged with the concept of Affinity, probably?
+#[derive(PartialEq)]
+enum Priority {
+    Requirement,
+    Hint,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 enum RequirementKind {
     Reg,
@@ -305,43 +309,57 @@ impl Default for RequirementKind {
     }
 }
 
+// TODO this could be merged with the concept of Affinity, probably?
 #[derive(Clone, Default)]
 struct Requirement {
     kind: RequirementKind,
     rc: Option<RegClass>,
 }
 
+impl fmt::Debug for Requirement {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        match self.kind {
+            RequirementKind::FixedReg(ru) => {
+                write!(fmt, "fixed_reg({:?}/{:?})", self.rc.unwrap(), ru)
+            }
+            RequirementKind::Reg => write!(fmt, "any_reg({:?})", self.rc.unwrap()),
+            RequirementKind::Stack(ref slot) => write!(fmt, "stack({:?})", slot),
+            RequirementKind::None => write!(fmt, "none"),
+        }
+    }
+}
+
 impl Requirement {
     fn merge_constraint(&mut self, constraint: &OperandConstraint) {
         let rc = constraint.regclass;
+        match self.rc {
+            Some(prev_rc) => {
+                if prev_rc != rc {
+                    unimplemented!(
+                        "conflicting requirements (kind = Reg, prev = FixedReg/Reg): {:?} / {:?}",
+                        prev_rc,
+                        rc
+                    );
+                }
+            }
 
-        let prev_rc = match self.rc {
-            Some(prev_rc) => prev_rc,
             None => {
                 // Easy case: assign the right requirement.
                 debug_assert!(self.kind == RequirementKind::None);
                 match constraint.kind {
-                    ConstraintKind::Reg => self.kind = RequirementKind::Reg,
-                    ConstraintKind::FixedReg(ru) | ConstraintKind::FixedTied(ru) => {
-                        self.kind = RequirementKind::FixedReg(ru);
-                    }
-                    ConstraintKind::Stack => self.kind = RequirementKind::Stack(None),
-                    ConstraintKind::Tied(_) => {
-                        // Assume Reg for now, it may get adjusted later on.
+                    ConstraintKind::Reg | ConstraintKind::Tied(_) => {
                         self.kind = RequirementKind::Reg;
+                    }
+                    ConstraintKind::FixedReg(ru) | ConstraintKind::FixedTied(ru) => {
+                        self.force_reg(rc, ru);
+                    }
+                    ConstraintKind::Stack => {
+                        self.force_stack(None);
                     }
                 }
                 self.rc = Some(rc);
                 return;
             }
-        };
-
-        if prev_rc != rc {
-            unimplemented!(
-                "conflicting reg class requirements (kind = Reg, prev = FixedReg/Reg): {:?} / {:?}",
-                prev_rc,
-                rc
-            );
         }
 
         match constraint.kind {
@@ -349,22 +367,49 @@ impl Requirement {
                 debug_assert!(self.kind == RequirementKind::Reg);
             }
             ConstraintKind::FixedReg(reg_unit) | ConstraintKind::FixedTied(reg_unit) => {
-                match self.kind {
-                    RequirementKind::FixedReg(prev_ru) => {
-                        if prev_ru != reg_unit {
-                            unimplemented!("redefining fixed register from {} to {} (kind = FixedReg/FixedTied, prev = FixedReg)", prev_ru, reg_unit);
-                        }
-                    }
-                    RequirementKind::Reg => {}
-                    RequirementKind::None => unreachable!("can't happen"),
-                    RequirementKind::Stack(_) => {
-                        unimplemented!("incompatible stack vs fixed-reg requirement (kind == FixedReg/FixedTied, prev = Stack)");
-                    }
-                }
+                self.force_reg(rc, reg_unit);
             }
             ConstraintKind::Stack => {
-                self.kind = RequirementKind::Stack(None);
+                self.force_stack(None);
             }
+        }
+    }
+
+    fn merge_requirement(&mut self, other: &Requirement) {
+        if self.kind == RequirementKind::None {
+            *self = other.clone();
+            return;
+        }
+
+        if self.rc != other.rc {
+            unimplemented!("different RC requirements");
+        }
+
+        match other.kind {
+            RequirementKind::FixedReg(ru) => match self.kind {
+                RequirementKind::FixedReg(prev_ru) => {
+                    if prev_ru != ru {
+                        unimplemented!("different fixed reg requirements");
+                    }
+                }
+                RequirementKind::Reg => {
+                    self.kind = RequirementKind::FixedReg(ru);
+                }
+                RequirementKind::Stack(_slot) => {
+                    unimplemented!("different fixed reg vs stack requirements");
+                }
+                RequirementKind::None => unreachable!(),
+            },
+
+            RequirementKind::Reg => {
+                // Every other requirement kind is at worst most precise, so keep it.
+            }
+
+            RequirementKind::Stack(_slot) => {
+                unimplemented!("stack requirement");
+            }
+
+            RequirementKind::None => unreachable!(),
         }
     }
 
@@ -374,6 +419,10 @@ impl Requirement {
                 unimplemented!("different RC constraint between input ABI and vreg interval");
             }
         } else {
+            debug!(
+                "force_reg: brand new fixed reg requirement {:?}/{:?}",
+                rc, ru
+            );
             assert!(self.kind == RequirementKind::None);
             self.rc = Some(rc);
             self.kind = RequirementKind::FixedReg(ru);
@@ -387,7 +436,8 @@ impl Requirement {
                 }
             }
             RequirementKind::Reg => {
-                // Adjust the constraint.
+                // Refine constraint.
+                debug!("force_reg: refining from any-reg to {:?}/{:?}", rc, ru);
                 self.kind = RequirementKind::FixedReg(ru);
             }
             RequirementKind::Stack(_) => {
@@ -399,7 +449,7 @@ impl Requirement {
         }
     }
 
-    fn force_stack(&mut self, _offset: i32) {
+    fn force_stack(&mut self, _offset: Option<i32>) {
         let _prev_rc = if let Some(rc) = self.rc {
             rc
         } else {
@@ -425,19 +475,6 @@ impl Requirement {
     }
 }
 
-impl fmt::Debug for Requirement {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        match self.kind {
-            RequirementKind::FixedReg(ru) => {
-                write!(fmt, "fixed_reg({:?}/{:?})", self.rc.unwrap(), ru)
-            }
-            RequirementKind::Reg => write!(fmt, "any_reg({:?})", self.rc.unwrap()),
-            RequirementKind::Stack(ref slot) => write!(fmt, "stack({:?})", slot),
-            RequirementKind::None => write!(fmt, "none"),
-        }
-    }
-}
-
 #[derive(Clone)]
 struct LiveInterval {
     /// Left bound of the live interval.
@@ -449,12 +486,13 @@ struct LiveInterval {
     /// The virtual register assigned to this live interval.
     vreg: VirtReg,
 
-    /// Preferred location for this live interval / vreg.
-    // TODO should we really use this?
-    affinity: Affinity,
-
-    /// Final requirement for this class.
+    /// Strong requirement for this class. It's a failure if the allocator didn't manage to satisfy
+    /// it.
     requirement: Requirement,
+
+    /// Preferred requirement for this class; it's fine if it's not strongly enforced, the move
+    /// resolver will make sure it is.
+    hint: Requirement,
 
     /// Value location, once it's assigned one.
     location: ValueLoc,
@@ -464,8 +502,8 @@ impl fmt::Debug for LiveInterval {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         write!(
             fmt,
-            "{:?} [{:?}, {:?}] (req: {:?})",
-            self.vreg, self.start, self.end, self.requirement
+            "{:?} [{:?}, {:?}] (hint: {:?}, req: {:?})",
+            self.vreg, self.start, self.end, self.hint, self.requirement
         )
     }
 }
@@ -476,10 +514,19 @@ impl LiveInterval {
             start: point.clone(),
             end: point,
             vreg,
-            affinity: Default::default(),
             requirement: Default::default(),
+            hint: Default::default(),
             location: Default::default(),
         }
+    }
+
+    /// Checks that start <= end.
+    fn check_invariants(&self, layout: &Layout) {
+        assert!(
+            self.start.cmp(&self.end, layout) != Ordering::Greater,
+            "start > end for live interval {}",
+            self.vreg
+        );
     }
 
     fn extends_start(&mut self, start: impl Into<ProgramPoint>, side: Side, layout: &Layout) {
@@ -543,12 +590,14 @@ impl LiveInterval {
         }
     }
 
-    fn merge_constraints(&mut self, constraint: &OperandConstraint, reginfo: &RegInfo) {
-        self.affinity.merge(constraint, reginfo);
-        self.requirement.merge_constraint(constraint);
+    fn merge_constraint(&mut self, priority: Priority, constraint: &OperandConstraint) {
+        self.hint.merge_constraint(constraint);
+        if priority == Priority::Requirement {
+            self.requirement.merge_constraint(constraint);
+        }
     }
 
-    fn merge_abi(&mut self, abi_param: &AbiParam, reg_info: &RegInfo) {
+    fn merge_abi(&mut self, priority: Priority, abi_param: &AbiParam, reg_info: &RegInfo) {
         match abi_param.location {
             ArgumentLoc::Unassigned => panic!("ABI params should have been assigned"),
             ArgumentLoc::Reg(reg_unit) => {
@@ -563,15 +612,45 @@ impl LiveInterval {
                     rc,
                     reg_info.display_regunit(reg_unit)
                 );
-                self.requirement.force_reg(rc, reg_unit);
+                self.hint.force_reg(rc, reg_unit);
+                if priority == Priority::Requirement {
+                    self.requirement.force_reg(rc, reg_unit);
+                }
             }
             ArgumentLoc::Stack(offset) => {
                 debug!(
                     "merge_abi({}): stack slot with offset {}",
                     self.vreg, offset
                 );
-                self.requirement.force_stack(offset);
+                self.hint.force_stack(Some(offset));
+                if priority == Priority::Requirement {
+                    self.requirement.force_stack(Some(offset));
+                }
             }
+        }
+    }
+
+    /// Returns true whether the location assigned to this interval matches its required location.
+    fn is_location_exact(&self) -> bool {
+        use RequirementKind::*;
+        debug_assert!(self.location.is_assigned());
+        match self.requirement.kind {
+            None => true,
+            Reg => {
+                if let ValueLoc::Reg(_) = &self.location {
+                    true
+                } else {
+                    false
+                }
+            }
+            FixedReg(ru) => {
+                if let ValueLoc::Reg(effective_ru) = &self.location {
+                    ru == *effective_ru
+                } else {
+                    false
+                }
+            }
+            Stack(ref slot) => unimplemented!("stack slot"),
         }
     }
 }
@@ -605,33 +684,41 @@ impl LiveIntervalGroup {
             .extend(inst, side, local_liveness, layout)
     }
 
-    fn merge_constraints(
+    fn merge_constraint(
         &mut self,
         vreg: VirtReg,
+        priority: Priority,
         constraint: &OperandConstraint,
-        reginfo: &RegInfo,
     ) {
+        debug!("merge_constraint[{}]", vreg);
         self.map[vreg]
             .as_mut()
             .unwrap()
-            .merge_constraints(constraint, reginfo)
+            .merge_constraint(priority, constraint)
     }
 
-    fn merge_abi(&mut self, vreg: VirtReg, abi_param: &AbiParam, reg_info: &RegInfo) {
+    fn merge_abi(
+        &mut self,
+        vreg: VirtReg,
+        priority: Priority,
+        abi_param: &AbiParam,
+        reg_info: &RegInfo,
+    ) {
+        debug!("merge_abi[{}]", vreg);
         self.map[vreg]
             .as_mut()
             .unwrap()
-            .merge_abi(abi_param, reg_info);
+            .merge_abi(priority, abi_param, reg_info);
     }
 
-    fn copy_constraints(&mut self, dst: VirtReg, src: VirtReg) {
-        let (affinity, requirement) = {
-            let src = self.map[src].as_ref().unwrap();
-            (src.affinity.clone(), src.requirement.clone())
-        };
+    fn inherit_constraints(&mut self, dst: VirtReg, src: VirtReg) {
+        debug!("inherit_constraints[{} <- {}]", dst, src);
+        let requirement = self.map[src].as_ref().unwrap().requirement.clone();
+        let hint = self.map[src].as_ref().unwrap().hint.clone();
+
         let dst = self.map[dst].as_mut().unwrap();
-        dst.affinity = affinity;
-        dst.requirement = requirement;
+        dst.requirement.merge_requirement(&requirement);
+        dst.hint.merge_requirement(&hint);
     }
 
     fn into_vec(self) -> Vec<LiveInterval> {
@@ -923,19 +1010,18 @@ impl<'a> Context<'a> {
                     live_intervals.extend(vreg, inst, Side::Input, &mut local_liveness, layout);
                     if let Some(constraints) = constraints {
                         if i < constraints.ins.len() {
-                            live_intervals.merge_constraints(
+                            live_intervals.merge_constraint(
                                 vreg,
+                                Priority::Requirement,
                                 &constraints.ins[i],
-                                &self.reg_info,
                             );
                         }
                     }
 
                     // Add opcode-specific constraints if required.
                     if is_return {
-                        let abi_param = &self.cur.func.signature.returns[i];
-                        // XXX something is wrong with this code here.
-                        live_intervals.merge_abi(vreg, abi_param, &self.reg_info);
+                        let abi_return = &self.cur.func.signature.returns[i];
+                        live_intervals.merge_abi(vreg, Priority::Hint, abi_return, &self.reg_info);
                     }
                 }
 
@@ -944,10 +1030,10 @@ impl<'a> Context<'a> {
                     live_intervals.extend(vreg, inst, Side::Output, &mut local_liveness, layout);
                     if let Some(constraints) = constraints {
                         if i < constraints.outs.len() {
-                            live_intervals.merge_constraints(
+                            live_intervals.merge_constraint(
                                 vreg,
+                                Priority::Requirement,
                                 &constraints.outs[i],
-                                &self.reg_info,
                             );
                         }
                     }
@@ -977,7 +1063,7 @@ impl<'a> Context<'a> {
                         layout,
                     );
 
-                    live_intervals.copy_constraints(pmove.dst, pmove.src);
+                    live_intervals.inherit_constraints(pmove.dst, pmove.src);
                 }
             }
         }
@@ -993,13 +1079,14 @@ impl<'a> Context<'a> {
             .zip(self.cur.func.signature.params.iter())
         {
             let vreg = vregs.value_vreg[*ebb_param].unwrap();
-            live_intervals.merge_abi(vreg, abi_param, &self.reg_info);
+            live_intervals.merge_abi(vreg, Priority::Hint, abi_param, &self.reg_info);
         }
 
         self.state.live_intervals = live_intervals.into_vec();
 
         debug!("live intervals:");
         for (i, live_int) in self.state.live_intervals.iter().enumerate() {
+            live_int.check_invariants(layout);
             debug!("\t{} {:?}", i, live_int);
         }
         debug!("");
@@ -1132,9 +1219,10 @@ impl<'a> Context<'a> {
         }
     }
 
-    fn try_allocate_required(
+    fn try_allocate(
         &mut self,
         i: usize,
+        priority: Priority,
         interval: &mut LiveInterval,
         available_registers: &mut RegisterSet,
     ) -> bool {
@@ -1143,14 +1231,19 @@ impl<'a> Context<'a> {
             .rc
             .unwrap_or_else(|| panic!("missing reg class requirement for live interval {}", i));
 
-        match interval.requirement.kind {
+        let kind = match priority {
+            Priority::Hint => &interval.hint.kind,
+            Priority::Requirement => &interval.requirement.kind,
+        };
+
+        let found_one = match kind {
             RequirementKind::Reg => {
                 // Any register in this reg class will do, pick one.
-                match available_registers.iter(reg_class).rnext() {
+                match available_registers.iter(reg_class).next() {
                     None => false,
                     Some(reg_unit) => {
                         debug!(
-                            "try_allocate_required: using {} register (RC constraint)",
+                            "try_allocate: using {} register (RC constraint)",
                             self.reg_info.display_regunit(reg_unit)
                         );
                         available_registers.take(reg_class, reg_unit);
@@ -1162,13 +1255,13 @@ impl<'a> Context<'a> {
             }
 
             RequirementKind::FixedReg(reg_unit) => {
-                if available_registers.is_avail(reg_class, reg_unit) {
+                if available_registers.is_avail(reg_class, *reg_unit) {
                     debug!(
-                        "try_allocate_required: using {} register (fixed reg constraint)",
-                        self.reg_info.display_regunit(reg_unit)
+                        "try_allocate: using {} register (fixed reg constraint)",
+                        self.reg_info.display_regunit(*reg_unit)
                     );
-                    available_registers.take(reg_class, reg_unit);
-                    interval.location = ValueLoc::Reg(reg_unit);
+                    available_registers.take(reg_class, *reg_unit);
+                    interval.location = ValueLoc::Reg(*reg_unit);
                     true
                 } else {
                     false
@@ -1176,10 +1269,23 @@ impl<'a> Context<'a> {
             }
 
             RequirementKind::Stack(_slot) => {
-                unimplemented!("try_allocate_required: requires stack slot");
+                unimplemented!("try_allocate: requires stack slot");
             }
 
             RequirementKind::None => unreachable!("unexpected dead interval"),
+        };
+
+        // If we didn't find one for the given hint, try for the requirement.
+        // If we tried for the hard requirement and fail, cause a spill.
+        if found_one {
+            true
+        } else {
+            match priority {
+                Priority::Hint => {
+                    self.try_allocate(i, Priority::Requirement, interval, available_registers)
+                }
+                Priority::Requirement => false,
+            }
         }
     }
 
@@ -1199,7 +1305,12 @@ impl<'a> Context<'a> {
             debug!("allocate_registers: handling interval {:?}", intervals[i]);
             self.expire_old_intervals(i, &mut active, &mut available_registers, &intervals);
 
-            if self.try_allocate_required(i, &mut intervals[i], &mut available_registers) {
+            if self.try_allocate(
+                i,
+                Priority::Hint,
+                &mut intervals[i],
+                &mut available_registers,
+            ) {
                 // Add i to active, sorted by increasing end point.
                 let interval = &intervals[i];
                 let index = active
@@ -1230,8 +1341,181 @@ impl<'a> Context<'a> {
     }
 
     fn resolve_moves(&mut self) {
-        unimplemented!("resolve_moves");
-        // TODO: cleanup moves
+        // Live intervals were sorted by increasing start points, sort them back by vreg, so we can
+        // index into them.
+        self.state
+            .live_intervals
+            .sort_by_cached_key(|live_int| live_int.vreg.as_u32());
+
+        // Assign value locations to each value.
+        let vregs = &self.state.vregs;
+        for (value, vreg) in vregs.value_vreg.iter() {
+            let vreg = match vreg.as_ref() {
+                Some(vreg) => vreg,
+                None => {
+                    // Dead value.
+                    self.cur.func.locations[value] = ValueLoc::Unassigned;
+                    continue;
+                }
+            };
+            let live_int = &self.state.live_intervals[vreg.as_u32() as usize];
+            if live_int.is_location_exact() {
+                self.cur.func.locations[value] = live_int.location;
+            } else {
+                // TODO when location is not exact, we need to iterate over the whole graph and
+                // fix things up.
+                unimplemented!("location not exact");
+            }
+        }
+
+        // First remove the transient parallel_moves instructions. Do it in two parts to avoid
+        // dealing with the borrow-checker.
+        let mut to_remove = Vec::new();
+        for ebb in self.cur.func.layout.ebbs() {
+            if let None = &vregs.parallel_moves[ebb] {
+                continue;
+            }
+            let last_inst = self.cur.func.layout.last_inst(ebb).unwrap();
+            debug_assert!(self.cur.func.dfg[last_inst].opcode() == Opcode::RegallocParallelCopies);
+            to_remove.push(last_inst);
+        }
+        for inst in to_remove {
+            self.cur.goto_inst(inst);
+            self.cur.remove_inst();
+        }
+
+        // Then, introduce fix up moves for parallel copies.
+        enum Fixup {
+            ParallelRegCopy {
+                at: Inst,
+                src: RegUnit,
+                dst: RegUnit,
+            },
+
+            RegMove {
+                at: Inst,
+                src: RegUnit,
+                dst: RegUnit,
+                value: Value,
+            },
+        }
+
+        let mut fixup_moves = Vec::new();
+        for ebb in self.cur.func.layout.ebbs() {
+            for inst in self.cur.func.layout.ebb_insts(ebb) {
+                let is_return = match self.cur.func.dfg[inst].opcode() {
+                    Opcode::Return | Opcode::FallthroughReturn => true,
+                    _ => false,
+                };
+
+                for (i, &arg) in self.cur.func.dfg.inst_args(inst).iter().enumerate() {
+                    let loc = self.cur.func.locations[arg];
+                    // TODO fixup constraints.
+                    //if let Some(constraints) = constraints {
+                    //if i < constraints.ins.len() {
+                    //let constraint = &constraints.ins[i];
+                    //}
+                    //}
+
+                    // Add opcode-specific constraints if required.
+                    if is_return {
+                        let abi_return = &self.cur.func.signature.returns[i];
+                        match abi_return.location {
+                            ArgumentLoc::Reg(dst) => match loc {
+                                ValueLoc::Reg(src) => {
+                                    if src != dst {
+                                        fixup_moves.push(Fixup::RegMove {
+                                            at: inst,
+                                            src,
+                                            dst,
+                                            value: arg,
+                                        })
+                                    }
+                                }
+                                ValueLoc::Stack(ref slot) => {
+                                    unimplemented!("return from stack offset to reg");
+                                }
+                                ValueLoc::Unassigned => unreachable!(),
+                            },
+                            ArgumentLoc::Stack(offset) => {
+                                unimplemented!("return to stack offset fixup");
+                            }
+                            ArgumentLoc::Unassigned => unreachable!(),
+                        }
+                    }
+                }
+
+                for (i, &result) in self.cur.func.dfg.inst_results(inst).iter().enumerate() {
+                    let vreg = vregs.value_vreg[result].unwrap();
+                    // TODO fixup constraints.
+                    //if let Some(constraints) = constraints {
+                    //if i < constraints.outs.len() {
+                    //let constraint = &constraints.outs[i];
+                    //}
+                    //}
+                }
+            }
+
+            let last_inst = self.cur.func.layout.last_inst(ebb).unwrap();
+            if let Some(moves) = &vregs.parallel_moves[ebb] {
+                for move_ in moves {
+                    let src_int = &self.state.live_intervals[move_.src.as_u32() as usize];
+                    let dst_int = &self.state.live_intervals[move_.dst.as_u32() as usize];
+                    if src_int.location != dst_int.location {
+                        match src_int.location {
+                            ValueLoc::Reg(src) => match dst_int.location {
+                                ValueLoc::Reg(dst) => {
+                                    if src != dst {
+                                        fixup_moves.push(Fixup::ParallelRegCopy {
+                                            at: last_inst,
+                                            src,
+                                            dst,
+                                        })
+                                    }
+                                }
+                                ValueLoc::Stack(ref slot) => {
+                                    unimplemented!("parallel copy regspill");
+                                }
+                                ValueLoc::Unassigned => unreachable!(),
+                            },
+                            ValueLoc::Stack(ref src) => match dst_int.location {
+                                ValueLoc::Reg(dst) => {
+                                    unimplemented!("parallel copy regfill");
+                                }
+                                ValueLoc::Stack(ref dst) => {
+                                    if src != dst {
+                                        unimplemented!("parallel stack to stack move")
+                                    }
+                                }
+                                ValueLoc::Unassigned => unreachable!(),
+                            },
+                            ValueLoc::Unassigned => unreachable!(),
+                        }
+                    }
+                }
+            }
+        }
+
+        for fixup in fixup_moves {
+            match fixup {
+                Fixup::ParallelRegCopy { at, src, dst } => {
+                    self.cur.goto_inst(at);
+                    // TODO copy_special has been chosen because it relates to a PHI move, so not
+                    // to one specific SSA value. Is this the right thing here?
+                    self.cur.ins().copy_special(src, dst);
+                }
+
+                Fixup::RegMove {
+                    at,
+                    src,
+                    dst,
+                    value,
+                } => {
+                    self.cur.goto_inst(at);
+                    self.cur.ins().regmove(value, src, dst);
+                }
+            }
+        }
     }
 }
 
