@@ -1,22 +1,33 @@
-//! There are two main problems in computer science: naming things, invalidating caches, and
-//! off-by-one errors.
+//! A linear-scan register allocator based on the work of Traub et al..
 
 // MVP:
-// - [ ] preserve registers around calls
 // - [x] tied operands (=> fuses virtual regs)
-// - [ ] fixed operands
+// - [x] fixed register operands
+// - [ ] preserve registers around calls
 // - [ ] spill
+//
+// I think one way to deal with most requirement constraints would be to introduce copies as soon
+// as a constraint merge fails. It would avoid the mess in the move resolver.
+// My current plan is to introduce such copies, and implement live interval coalescing thereafter.
+// (when two live intervals requirements don't conflict)
 
 // high-level TODO:
-// - entry block: fill incoming arguments
-// - preallocate live intervals with ISA requirements
+// - make liveness analysis less expensive:
+//   - by identifying precisely which blocks must be analyzed again, instead of analyzing them all.
+//   - by computing live intervals more cheaply, see todo comment down there.
+//   - OR just switch to exact live-ranges sets in place of live intervals.
+// - simplify the whole Requirement thing, it's quite messy. See if we can use Affinity instead, by
+// extending Affinity to support a precise register (iximeow's PR).
+//   - maybe get rid of requirement? they're some kind of repetition of the OperandConstraint.
+//   - alternatively, make requirement merging fallible, and when it fails, introduce an (SSA?)
+//   copy of the conflicting value, be it an input or output.
+// - the move resolver pass should take diversions into account.
+// - also make sure the move resolver pass isn't more complicated that it ought to.
 // - calls: add live intervals for physical registers, take them all at calls
-//  - this might call spilling of all values live accross a call, which sounds like a bad idea.
-//  - unless we have a very simple way to split live ranges
+//  - this might cause spilling of all values live accross a call, which sounds like a bad idea.  ,
+//  unless we have a very simple way to split live ranges
 // - calls: correctly fill arguments and read return values.
-// - resolve_moves:
-//  - moves between blocks
-//  - moves between stack and live registers...
+// - move resolver: handle cycles in parallel moves
 
 use core::cmp::Ordering;
 use core::fmt;
@@ -289,7 +300,7 @@ impl<'liveness> LocalLivenessMap<'liveness> {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(Clone, PartialEq)]
 enum Priority {
     Requirement,
     Hint,
@@ -310,9 +321,10 @@ impl Default for RequirementKind {
 }
 
 // TODO this could be merged with the concept of Affinity, probably?
-#[derive(Clone, Default)]
+#[derive(Clone)]
 struct Requirement {
     kind: RequirementKind,
+    priority: Priority,
     rc: Option<RegClass>,
 }
 
@@ -330,6 +342,14 @@ impl fmt::Debug for Requirement {
 }
 
 impl Requirement {
+    fn new(priority: Priority) -> Self {
+        Self {
+            kind: Default::default(),
+            rc: None,
+            priority,
+        }
+    }
+
     fn merge_constraint(&mut self, constraint: &OperandConstraint) {
         let rc = constraint.regclass;
         match self.rc {
@@ -364,7 +384,10 @@ impl Requirement {
 
         match constraint.kind {
             ConstraintKind::Reg | ConstraintKind::Tied(_) => {
-                debug_assert!(self.kind == RequirementKind::Reg);
+                debug_assert!(match self.kind {
+                    RequirementKind::Reg | RequirementKind::FixedReg(_) => true,
+                    _ => false,
+                });
             }
             ConstraintKind::FixedReg(reg_unit) | ConstraintKind::FixedTied(reg_unit) => {
                 self.force_reg(rc, reg_unit);
@@ -389,7 +412,16 @@ impl Requirement {
             RequirementKind::FixedReg(ru) => match self.kind {
                 RequirementKind::FixedReg(prev_ru) => {
                     if prev_ru != ru {
-                        unimplemented!("different fixed reg requirements");
+                        match self.priority {
+                            Priority::Hint => {
+                                // Keep the current register hint: there is going to be a move
+                                // anyways, so make sure at least one register is in the right
+                                // place.
+                            }
+                            Priority::Requirement => {
+                                panic!("different strong fixed reg requirements");
+                            }
+                        }
                     }
                 }
                 RequirementKind::Reg => {
@@ -432,7 +464,14 @@ impl Requirement {
         match self.kind {
             RequirementKind::FixedReg(prev_ru) => {
                 if ru != prev_ru {
-                    unimplemented!("different RU constraint between input ABI and vreg interval");
+                    match self.priority {
+                        Priority::Requirement => {
+                            panic!("different RU constraint between input ABI and vreg interval");
+                        }
+                        Priority::Hint => {
+                            // Do nothing.
+                        }
+                    }
                 }
             }
             RequirementKind::Reg => {
@@ -514,8 +553,8 @@ impl LiveInterval {
             start: point.clone(),
             end: point,
             vreg,
-            requirement: Default::default(),
-            hint: Default::default(),
+            requirement: Requirement::new(Priority::Requirement),
+            hint: Requirement::new(Priority::Hint),
             location: Default::default(),
         }
     }
@@ -690,7 +729,7 @@ impl LiveIntervalGroup {
         priority: Priority,
         constraint: &OperandConstraint,
     ) {
-        debug!("merge_constraint[{}]", vreg);
+        debug!("LIG::merge_constraint[{}]", vreg);
         self.map[vreg]
             .as_mut()
             .unwrap()
@@ -704,7 +743,7 @@ impl LiveIntervalGroup {
         abi_param: &AbiParam,
         reg_info: &RegInfo,
     ) {
-        debug!("merge_abi[{}]", vreg);
+        debug!("LIG::merge_abi[{}]", vreg);
         self.map[vreg]
             .as_mut()
             .unwrap()
@@ -712,7 +751,7 @@ impl LiveIntervalGroup {
     }
 
     fn inherit_constraints(&mut self, dst: VirtReg, src: VirtReg) {
-        debug!("inherit_constraints[{} <- {}]", dst, src);
+        debug!("LIG::inherit_constraints[{} <- {}]", dst, src);
         let requirement = self.map[src].as_ref().unwrap().requirement.clone();
         let hint = self.map[src].as_ref().unwrap().hint.clone();
 
@@ -739,6 +778,32 @@ impl<'a> Context<'a> {
     /// Initially, generate a naive sequentialisation of the parallel move just by copying through
     /// a fresh set of vregs.
     fn make_phis_explicit(&mut self) {
+        // To deal with entry block requirements, introduce copies of the entry block parameters.
+        // TODO this is needed because there can be only one fixed reg requirement per live
+        // interval, and these have a fixed reg requirement at their definition point. Maybe
+        // there's a better way?
+        let entry_block = self.cur.func.layout.entry_block().unwrap();
+        let old_params = self
+            .cur
+            .func
+            .dfg
+            .ebb_params(entry_block)
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        let mut new_params = Vec::new();
+        for &new_param in old_params.iter().rev() {
+            let ty = self.cur.func.dfg.value_type(new_param);
+            let val = self.cur.func.dfg.append_ebb_param(entry_block, ty);
+            new_params.push(val);
+        }
+        self.cur.goto_first_insertion_point(entry_block);
+        for (&old_param, &new_param) in old_params.iter().zip(new_params.iter()) {
+            self.cur.func.dfg.remove_ebb_param(old_param);
+            // Make a copy of the new_param that returns into the old_param.
+            self.cur.ins().with_result(old_param).copy(new_param);
+        }
+
         let vregs = &mut self.state.vregs;
 
         self.topo.reset(self.cur.func.layout.ebbs());
@@ -879,7 +944,7 @@ impl<'a> Context<'a> {
         }
 
         for location in parallel_copy_locations {
-            self.cur.goto_after_inst(location);
+            self.cur.goto_inst(location);
             self.cur.ins().regalloc_parallel_copies();
         }
 
@@ -985,7 +1050,7 @@ impl<'a> Context<'a> {
         // Go through all the blocks in post order, reading them backwards, to infer live
         // intervals.
 
-        // TODO: revisit this. I am pretty sure this can be do in a better way:
+        // TODO: revisit this. I am pretty sure this can be done in a better way:
         // - if a live interval hasn't been created, create a full range the first time, according
         // to the local analysis.
         // - if it exists, extend it with local liveness analysis first.
@@ -1068,7 +1133,7 @@ impl<'a> Context<'a> {
             }
         }
 
-        // Combine ABI constraints into the entry block.
+        // Combine ABI constraints for the entry block parameters.
         let entry_block = self.cur.func.layout.entry_block().unwrap();
         for (ebb_param, abi_param) in self
             .cur
@@ -1079,7 +1144,7 @@ impl<'a> Context<'a> {
             .zip(self.cur.func.signature.params.iter())
         {
             let vreg = vregs.value_vreg[*ebb_param].unwrap();
-            live_intervals.merge_abi(vreg, Priority::Hint, abi_param, &self.reg_info);
+            live_intervals.merge_abi(vreg, Priority::Requirement, abi_param, &self.reg_info);
         }
 
         self.state.live_intervals = live_intervals.into_vec();
@@ -1142,10 +1207,33 @@ impl<'a> Context<'a> {
         active: &mut Vec<usize>,
         intervals: &mut Vec<LiveInterval>,
     ) {
-        let last_active = *active
-            .last()
-            .expect("spill requires at least one active interval");
+        let mut last_active = None;
 
+        let current_rc = intervals[cur].requirement.rc;
+
+        // Find the last active interval with a compatible RC class.
+        if let Some(current_rc) = current_rc {
+            for &active_int in active.iter().rev() {
+                if let Some(rc) = intervals[active_int].requirement.rc {
+                    if rc.has_subclass(RegClassIndex::new(current_rc.index as usize)) {
+                        last_active = Some(active_int);
+                        break;
+                    }
+                } else {
+                    // This active interval doesn't have a register class requirement, so we can
+                    // use it.
+                    last_active = Some(active_int);
+                    break;
+                }
+            }
+        } else {
+            last_active = Some(*active.last().unwrap());
+        }
+
+        let last_active = last_active.expect("spill requires at least one active interval");
+
+        // Heuristic: if the last active interval ends after the interval we're looking at, spill
+        // it. Otherwise, spill the current interval.
         if intervals[last_active]
             .end
             .cmp(&intervals[cur].end, &self.cur.func.layout)
@@ -1376,22 +1464,27 @@ impl<'a> Context<'a> {
                 continue;
             }
             let last_inst = self.cur.func.layout.last_inst(ebb).unwrap();
-            debug_assert!(self.cur.func.dfg[last_inst].opcode() == Opcode::RegallocParallelCopies);
-            to_remove.push(last_inst);
+            debug_assert!(self.cur.func.dfg[last_inst].opcode().is_terminator());
+            let prev_inst = self.cur.func.layout.prev_inst(last_inst).unwrap();
+            debug_assert!(self.cur.func.dfg[prev_inst].opcode() == Opcode::RegallocParallelCopies);
+            to_remove.push(prev_inst);
         }
         for inst in to_remove {
             self.cur.goto_inst(inst);
             self.cur.remove_inst();
         }
 
-        // Then, introduce fix up moves for parallel copies.
+        // Then, introduce fix up moves.
         enum Fixup {
+            /// A parallel register to register copy. Note this isn't a diversion, since it's not
+            /// tied to any SSA value.
             ParallelRegCopy {
                 at: Inst,
                 src: RegUnit,
                 dst: RegUnit,
             },
 
+            /// A register to register move diversion, tied to a single SSA value.
             RegMove {
                 at: Inst,
                 src: RegUnit,
@@ -1401,6 +1494,42 @@ impl<'a> Context<'a> {
         }
 
         let mut fixup_moves = Vec::new();
+
+        let entry_block = self.cur.func.layout.entry_block().unwrap();
+        let first_inst = self.cur.func.layout.first_inst(entry_block).unwrap();
+        for (&ebb_param, abi_param) in self
+            .cur
+            .func
+            .dfg
+            .ebb_params(entry_block)
+            .iter()
+            .zip(self.cur.func.signature.params.iter())
+        {
+            let loc = self.cur.func.locations[ebb_param];
+            match abi_param.location {
+                ArgumentLoc::Reg(src) => match loc {
+                    ValueLoc::Reg(dst) => {
+                        if src != dst {
+                            fixup_moves.push(Fixup::RegMove {
+                                at: first_inst,
+                                src,
+                                dst,
+                                value: ebb_param,
+                            })
+                        }
+                    }
+                    ValueLoc::Stack(ref _slot) => {
+                        unimplemented!("stack to reg move for entry param");
+                    }
+                    ValueLoc::Unassigned => unreachable!(),
+                },
+                ArgumentLoc::Stack(_offset) => {
+                    unimplemented!("stack location for entry param");
+                }
+                ArgumentLoc::Unassigned => unreachable!(),
+            }
+        }
+
         for ebb in self.cur.func.layout.ebbs() {
             for inst in self.cur.func.layout.ebb_insts(ebb) {
                 let is_return = match self.cur.func.dfg[inst].opcode() {
@@ -1410,12 +1539,6 @@ impl<'a> Context<'a> {
 
                 for (i, &arg) in self.cur.func.dfg.inst_args(inst).iter().enumerate() {
                     let loc = self.cur.func.locations[arg];
-                    // TODO fixup constraints.
-                    //if let Some(constraints) = constraints {
-                    //if i < constraints.ins.len() {
-                    //let constraint = &constraints.ins[i];
-                    //}
-                    //}
 
                     // Add opcode-specific constraints if required.
                     if is_return {
@@ -1443,6 +1566,13 @@ impl<'a> Context<'a> {
                             ArgumentLoc::Unassigned => unreachable!(),
                         }
                     }
+
+                    // TODO fixup constraints.
+                    //if let Some(constraints) = constraints {
+                    //if i < constraints.ins.len() {
+                    //let constraint = &constraints.ins[i];
+                    //}
+                    //}
                 }
 
                 for (i, &result) in self.cur.func.dfg.inst_results(inst).iter().enumerate() {
