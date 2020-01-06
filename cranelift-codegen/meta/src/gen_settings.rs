@@ -427,6 +427,70 @@ fn gen_display(group: &SettingGroup, fmt: &mut Formatter) {
     fmtln!(fmt, "}");
 }
 
+fn gen_specific_builder(group: &SettingGroup, fmt: &mut Formatter) {
+    fmt.doc_comment("Specific builder for this architecture.");
+    fmtln!(fmt, "#[allow(dead_code)]");
+    fmtln!(fmt, "pub struct SpecificBuilder {");
+    fmt.indent(|fmt| {
+        fmtln!(fmt, "builder: Builder,")
+    });
+    fmtln!(fmt, "}");
+    fmt.empty_line();
+
+    fmtln!(fmt, "impl SpecificBuilder {");
+    fmt.indent(|fmt| {
+        fmtln!(fmt, "fn new() -> Self {");
+        fmt.indent(|fmt| {
+            fmtln!(fmt, "Self {");
+            fmt.indent(|fmt| {
+                fmtln!(fmt, "builder: Builder::new(&TEMPLATE),")
+            });
+            fmtln!(fmt, "}");
+        });
+        fmtln!(fmt, "}");
+        fmt.empty_line();
+
+        fmtln!(fmt, "fn builder(self) -> Builder {");
+        fmt.indent(|fmt| {
+            fmtln!(fmt, "self.builder")
+        });
+        fmtln!(fmt, "}");
+        fmt.empty_line();
+
+        for setting in &group.settings {
+            match setting.specific {
+                SpecificSetting::Bool(_) => {
+                    fmtln!(fmt, "fn set_{}(mut self, value: bool) -> Self {{", setting.name);
+                    fmt.indent(|fmt| {
+                        fmtln!(fmt, r#"self.builder.set("{}", &format!("{{}}", value)).unwrap();"#, setting.name);
+                        fmtln!(fmt, "self");
+                    });
+                    fmtln!(fmt, "}");
+                }
+
+                SpecificSetting::Num(_) => {
+                    fmtln!(fmt, "fn set_{}(mut self, value: u8) -> Self {{", setting.name);
+                    fmt.indent(|fmt| {
+                        fmtln!(fmt, r#"self.builder.set("{}", &value.to_string()).unwrap();"#, setting.name);
+                        fmtln!(fmt, "self");
+                    });
+                    fmtln!(fmt, "}");
+                }
+
+                SpecificSetting::Enum(_) => {
+                    fmtln!(fmt, "fn set_{}(mut self, value: {}) -> Self {{", setting.name, camel_case(setting.name));
+                    fmt.indent(|fmt| {
+                        fmtln!(fmt, r#"self.builder.set("{}", &value.to_string()).unwrap();"#, setting.name);
+                        fmtln!(fmt, "self");
+                    });
+                    fmtln!(fmt, "}");
+                }
+            }
+        }
+    });
+    fmtln!(fmt, "}");
+}
+
 fn gen_group(group: &SettingGroup, parent: ParentGroup, fmt: &mut Formatter) {
     // Generate struct.
     fmtln!(fmt, "#[derive(Clone)]");
@@ -444,6 +508,8 @@ fn gen_group(group: &SettingGroup, parent: ParentGroup, fmt: &mut Formatter) {
     gen_descriptors(group, fmt);
     gen_template(group, fmt);
     gen_display(group, fmt);
+
+    gen_specific_builder(group, fmt);
 }
 
 pub(crate) fn generate(
