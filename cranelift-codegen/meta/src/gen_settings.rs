@@ -68,6 +68,7 @@ fn gen_constructor(group: &SettingGroup, parent: ParentGroup, fmt: &mut Formatte
         fmtln!(fmt, "}");
     });
     fmtln!(fmt, "}");
+    fmt.empty_line();
 }
 
 /// Emit Display and FromStr implementations for enum settings.
@@ -90,6 +91,7 @@ fn gen_to_and_from_str(name: &str, values: &[&'static str], fmt: &mut Formatter)
         fmtln!(fmt, "}");
     });
     fmtln!(fmt, "}");
+    fmt.empty_line();
 
     fmtln!(fmt, "impl str::FromStr for {} {{", name);
     fmt.indent(|fmt| {
@@ -108,6 +110,7 @@ fn gen_to_and_from_str(name: &str, values: &[&'static str], fmt: &mut Formatter)
         fmtln!(fmt, "}");
     });
     fmtln!(fmt, "}");
+    fmt.empty_line();
 }
 
 /// Emit real enum for the Enum settings.
@@ -129,6 +132,7 @@ fn gen_enum_types(group: &SettingGroup, fmt: &mut Formatter) {
             }
         });
         fmtln!(fmt, "}");
+        fmt.empty_line();
 
         gen_to_and_from_str(&name, values, fmt);
     }
@@ -220,6 +224,7 @@ fn gen_getters(group: &SettingGroup, fmt: &mut Formatter) {
         }
     });
     fmtln!(fmt, "}");
+    fmt.empty_line();
 }
 
 #[derive(Hash, PartialEq, Eq)]
@@ -296,6 +301,7 @@ fn gen_descriptors(group: &SettingGroup, fmt: &mut Formatter) {
         }
     });
     fmtln!(fmt, "];");
+    fmt.empty_line();
 
     // Generate enumerators.
     fmtln!(fmt, "static ENUMERATORS: [&str; {}] = [", enum_table.len());
@@ -305,6 +311,7 @@ fn gen_descriptors(group: &SettingGroup, fmt: &mut Formatter) {
         }
     });
     fmtln!(fmt, "];");
+    fmt.empty_line();
 
     // Generate hash table.
     let mut hash_entries: Vec<SettingOrPreset> = Vec::new();
@@ -331,6 +338,7 @@ fn gen_descriptors(group: &SettingGroup, fmt: &mut Formatter) {
         }
     });
     fmtln!(fmt, "];");
+    fmt.empty_line();
 
     // Generate presets.
     fmtln!(
@@ -347,6 +355,7 @@ fn gen_descriptors(group: &SettingGroup, fmt: &mut Formatter) {
         }
     });
     fmtln!(fmt, "];");
+    fmt.empty_line();
 }
 
 fn gen_template(group: &SettingGroup, fmt: &mut Formatter) {
@@ -374,6 +383,7 @@ fn gen_template(group: &SettingGroup, fmt: &mut Formatter) {
         fmtln!(fmt, "presets: &PRESETS,");
     });
     fmtln!(fmt, "};");
+    fmt.empty_line();
 
     fmt.doc_comment(format!(
         "Create a `settings::Builder` for the {} settings group.",
@@ -384,6 +394,7 @@ fn gen_template(group: &SettingGroup, fmt: &mut Formatter) {
         fmtln!(fmt, "Builder::new(&TEMPLATE)");
     });
     fmtln!(fmt, "}");
+    fmt.empty_line();
 }
 
 fn gen_display(group: &SettingGroup, fmt: &mut Formatter) {
@@ -425,6 +436,7 @@ fn gen_group(group: &SettingGroup, parent: ParentGroup, fmt: &mut Formatter) {
         fmtln!(fmt, "bytes: [u8; {}],", group.byte_size());
     });
     fmtln!(fmt, "}");
+    fmt.empty_line();
 
     gen_constructor(group, parent, fmt);
     gen_enum_types(group, fmt);
