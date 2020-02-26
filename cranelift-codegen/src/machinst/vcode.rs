@@ -345,7 +345,7 @@ impl<I: VCodeInst> VCode<I> {
         let mut final_insns = vec![];
         let mut final_block_ranges = vec![(0, 0); self.num_blocks()];
 
-        for block in &self.final_block_order {
+        for (i, block) in self.final_block_order.iter().enumerate() {
             let (start, end) = block_ranges[*block as usize];
             let final_start = final_insns.len() as InsnIndex;
 
@@ -372,6 +372,13 @@ impl<I: VCodeInst> VCode<I> {
                     final_insns.push(insn.clone());
                 }
             }
+
+            if i + 1 == self.final_block_order.len() {
+                // XXX (bnjbvr) baldrdash doesn't generate a return instruction, so force insert an
+                // epilogue here, until we figure a better solution.
+                final_insns.extend(self.abi.gen_epilogue().into_iter());
+            }
+
             let final_end = final_insns.len() as InsnIndex;
             final_block_ranges[*block as usize] = (final_start, final_end);
         }

@@ -275,6 +275,9 @@ pub fn reg_R8() -> Reg {
 pub fn reg_R9() -> Reg {
     info_R9().0.to_reg()
 }
+pub fn reg_R14() -> Reg {
+    info_R14().0.to_reg()
+}
 
 pub fn reg_RSP() -> Reg {
     info_RSP().0.to_reg()

@@ -206,13 +206,15 @@ impl<'a, I: VCodeInst> Lower<'a, I> {
         }
     }
 
-    fn gen_retval_setup(&mut self) {
+    fn gen_retval_setup(&mut self, gen_ret_inst: bool) {
         for (i, reg) in self.retval_regs.iter().enumerate() {
             let insn = self.vcode.abi().gen_copy_reg_to_retval(i, *reg);
             self.vcode.push(insn);
         }
-        let ret = self.vcode.abi().gen_ret();
-        self.vcode.push(ret);
+        if gen_ret_inst {
+            let ret = self.vcode.abi().gen_ret();
+            self.vcode.push(ret);
+        }
     }
 
     /// Lower the function.
@@ -267,7 +269,8 @@ impl<'a, I: VCodeInst> Lower<'a, I> {
             // If this is a return block, produce the return value setup.
             let last_insn = self.f.layout.block_insts(*bb).last().unwrap();
             if self.f.dfg[last_insn].opcode().is_return() {
-                self.gen_retval_setup();
+                let is_fallthrough = self.f.dfg[last_insn].opcode() == Opcode::FallthroughReturn;
+                self.gen_retval_setup(!is_fallthrough);
                 self.vcode.end_ir_inst();
             }
 
