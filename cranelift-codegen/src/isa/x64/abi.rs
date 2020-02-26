@@ -291,7 +291,7 @@ impl ABIBody<Inst> for X64ABIBody {
         if spill_area_sizeB > 0x7FFF_FFFF {
             panic!("gen_prologue(x86): total_stacksize >= 2G");
         }
-        if spill_area_sizeB >= 0 {
+        if spill_area_sizeB > 0 {
             // FIXME JRS 2020Feb16: handle spill_area_size >= 2G?
             insts.push(i_Alu_RMI_R(
                 true,
@@ -319,7 +319,7 @@ impl ABIBody<Inst> for X64ABIBody {
         // Clear the spill area and the 16-alignment padding below it.
         debug_assert!(self.spill_area_sizeB.is_some());
         let spill_area_sizeB = self.spill_area_sizeB.unwrap();
-        if spill_area_sizeB >= 0 {
+        if spill_area_sizeB > 0 {
             // FIXME JRS 2020Feb16: what if spill_area_size >= 2G?
             insts.push(i_Alu_RMI_R(
                 true,
